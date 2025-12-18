@@ -21,4 +21,9 @@ public class DashboardController {
     public Map<String, Object> stats() {
         return Map.of("code", 200, "data", dashboardService.getStats());
     }
+
+    @GetMapping("/db-status")
+    public Map<String, Object> dbStatus() {
+        return Map.of("code", 200, "data", dashboardService.getDbStatus());
+    }
 }

@@ -11,6 +11,18 @@ spring:
     hibernate:
       ddl-auto: update # ????/?????
 
+  mail:
+    host: smtp.qq.com
+    port: 587
+    username: 2450956909@qq.com
+    password: mcpmruvwtcdkdibg
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
   # ??????
   datasource:
     # MySQL (??)
@@ -39,3 +51,5 @@ spring:
       driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
       hikari:
         pool-name: HikariPool-SQLServer
+
+

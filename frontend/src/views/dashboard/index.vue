@@ -3,10 +3,56 @@
     <div class="welcome-card">
       <div class="welcome-text">
         <h2>👋 欢迎回来，{{ user.realName }}！</h2>
-        <p>今天是 {{ currentDate }}，祝你拥有高效的一天。</p>
+        <p>今天是 {{ currentDate }}，系统运行平稳。</p>
       </div>
       <img src="https://img.freepik.com/free-vector/exams-concept-illustration_114360-2754.jpg" class="welcome-img" alt="bg"/>
     </div>
+
+    <el-card class="db-status-card" shadow="never">
+      <template #header>
+        <div class="card-header">
+          <span>📡 多数据源实时监控</span>
+          <el-button link type="primary" @click="fetchDbStatus">刷新状态</el-button>
+        </div>
+      </template>
+      <el-row :gutter="20">
+        <el-col :span="8">
+          <div class="db-item" :class="{ 'is-active': dbStatus.mysql }">
+            <div class="db-icon mysql">🐬</div>
+            <div class="db-info">
+              <div class="db-name">MySQL (主源)</div>
+              <div class="db-state">
+                <span class="dot"></span> {{ dbStatus.mysql ? '运行正常' : '连接断开' }}
+              </div>
+            </div>
+          </div>
+        </el-col>
+
+        <el-col :span="8">
+          <div class="db-item" :class="{ 'is-active': dbStatus.oracle }">
+            <div class="db-icon oracle">O</div>
+            <div class="db-info">
+              <div class="db-name">Oracle (备份1)</div>
+              <div class="db-state">
+                <span class="dot"></span> {{ dbStatus.oracle ? '同步正常' : '连接异常' }}
+              </div>
+            </div>
+          </div>
+        </el-col>
+
+        <el-col :span="8">
+          <div class="db-item" :class="{ 'is-active': dbStatus.sqlserver }">
+            <div class="db-icon sqlserver">S</div>
+            <div class="db-info">
+              <div class="db-name">SQL Server (备份2)</div>
+              <div class="db-state">
+                <span class="dot"></span> {{ dbStatus.sqlserver ? '同步正常' : '连接异常' }}
+              </div>
+            </div>
+          </div>
+        </el-col>
+      </el-row>
+    </el-card>
 
     <el-row :gutter="20" class="stat-row">
       <el-col :span="6">
@@ -65,11 +111,10 @@
         </div>
       </template>
       <div class="feature-list">
-        <p>✅ <b>角色管理</b>：支持管理员、教师、学生三种角色登录。</p>
-        <p>✅ <b>题库管理</b>：支持单选、多选、判断等多种题型录入。</p>
+        <p>✅ <b>多源同步</b>：MySQL 主库实时自动同步至 Oracle 和 SQL Server 备库。</p>
+        <p>✅ <b>故障报警</b>：同步异常自动邮件通知管理员。</p>
         <p>✅ <b>智能组卷</b>：一键随机抽题，自动生成试卷并计算总分。</p>
         <p>✅ <b>在线考试</b>：学生在线答题，提交后自动判分。</p>
-        <p>✅ <b>成绩分析</b>：可视化展示考试成绩，支持导出和排名。</p>
       </div>
     </el-card>
   </div>
@@ -77,7 +122,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { getDashboardStats } from '@/api/dashboard'
+import { getDashboardStats, getDbStatus } from '@/api/dashboard'
 import { User, DocumentCopy, Files, Trophy } from '@element-plus/icons-vue'
 
 const user = JSON.parse(localStorage.getItem('user') || '{}')
@@ -88,17 +133,36 @@ const stats = ref({
   examCount: 0
 })
 
+const dbStatus = ref({
+  mysql: false,
+  oracle: false,
+  sqlserver: false
+})
+
 const currentDate = new Date().toLocaleDateString()
 
+const fetchDbStatus = async () => {
+  const res: any = await getDbStatus()
+  if(res.code === 200) {
+    dbStatus.value = res.data
+  }
+}
+
 onMounted(async () => {
+  // 加载统计数据
   const res: any = await getDashboardStats()
   if(res.code === 200) {
     stats.value = res.data
   }
+  // 加载数据库状态
+  fetchDbStatus()
 })
 </script>
 
 <style scoped>
+.dashboard-container { padding: 20px; }
+
+/* 欢迎卡片 */
 .welcome-card {
   background: white;
   padding: 20px 40px;
@@ -113,6 +177,59 @@ onMounted(async () => {
 .welcome-text p { color: #909399; margin: 0; }
 .welcome-img { height: 100px; object-fit: contain; }
 
+/* 数据库监控卡片 */
+.db-status-card { margin-bottom: 20px; }
+.db-item {
+  display: flex;
+  align-items: center;
+  padding: 15px;
+  border-radius: 8px;
+  background: #f5f7fa;
+  border: 1px solid #e4e7ed;
+  transition: all 0.3s;
+}
+.db-item.is-active {
+  background: #f0f9eb;
+  border-color: #67c23a;
+}
+.db-icon {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  display: flex; justify-content: center; align-items: center;
+  font-weight: bold; font-size: 18px; color: white;
+  margin-right: 12px;
+}
+.db-icon.mysql { background: #00758f; }
+.db-icon.oracle { background: #f80000; }
+.db-icon.sqlserver { background: #a9a9a9; } /* SQL Server 灰色，连上变亮 */
+
+.is-active .db-icon.sqlserver { background: #333; }
+
+.db-info .db-name { font-weight: bold; font-size: 14px; color: #606266; }
+.db-state { font-size: 12px; color: #909399; display: flex; align-items: center; margin-top: 4px; }
+.is-active .db-state { color: #67c23a; }
+
+/* 呼吸灯效果 */
+.dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #f56c6c;
+  margin-right: 6px;
+  display: inline-block;
+}
+.is-active .dot {
+  background: #67c23a;
+  box-shadow: 0 0 8px #67c23a;
+  animation: breathe 2s infinite ease-in-out;
+}
+
+@keyframes breathe {
+  0% { opacity: 0.6; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.1); }
+  100% { opacity: 0.6; transform: scale(0.9); }
+}
+
+/* 统计卡片 */
 .stat-row { margin-bottom: 20px; }
 .stat-card { border: none; }
 .stat-content { display: flex; align-items: center; }
@@ -126,7 +243,6 @@ onMounted(async () => {
 .info .number { font-size: 24px; font-weight: bold; color: #303133; }
 .info .label { font-size: 12px; color: #909399; }
 
-/* 卡片颜色配色 */
 .color-1 .icon-box { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
 .color-2 .icon-box { background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 99%, #fecfef 100%); }
 .color-3 .icon-box { background: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%); }

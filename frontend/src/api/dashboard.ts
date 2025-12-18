@@ -6,3 +6,11 @@ export const getDashboardStats = () => {
     method: 'get'
   })
 }
+
+// === 【新增】获取数据库状态 ===
+export const getDbStatus = () => {
+  return request({
+    url: '/api/dashboard/db-status',
+    method: 'get'
+  })
+}
