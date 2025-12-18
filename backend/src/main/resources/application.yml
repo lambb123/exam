@@ -1,0 +1,41 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: exam-sync-system
+
+  jpa:
+    open-in-view: false
+    show-sql: true
+    hibernate:
+      ddl-auto: update # ????/?????
+
+  # ??????
+  datasource:
+    # MySQL (??)
+    mysql:
+      jdbc-url: jdbc:mysql://localhost:3306/exam_system_db?serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=utf8
+      username: root
+      password: 123456
+      driver-class-name: com.mysql.cj.jdbc.Driver
+      hikari:
+        pool-name: HikariPool-MySQL
+
+    # Oracle
+    oracle:
+      jdbc-url: jdbc:oracle:thin:@//localhost:1521/xepdb1
+      username: system
+      password: 123456
+      driver-class-name: oracle.jdbc.OracleDriver
+      hikari:
+        pool-name: HikariPool-Oracle
+
+    # SQL Server
+    sqlserver:
+      jdbc-url: jdbc:sqlserver://localhost:1433;databaseName=exam_system_db;encrypt=false;trustServerCertificate=true
+      username: sa
+      password: 123456
+      driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+      hikari:
+        pool-name: HikariPool-SQLServer
