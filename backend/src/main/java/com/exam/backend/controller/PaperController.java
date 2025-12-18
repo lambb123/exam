@@ -2,9 +2,9 @@ package com.exam.backend.controller;
 
 import com.exam.backend.entity.Paper;
 import com.exam.backend.service.PaperService;
+import com.exam.backend.controller.dto.PaperCreateRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
-import com.exam.backend.controller.dto.PaperCreateRequest;
 
 import java.util.HashMap;
 import java.util.List;
@@ -28,6 +28,22 @@ public class PaperController {
         return map;
     }
 
+    // 【新增】获取试卷详情
+    @GetMapping("/{id}")
+    public Map<String, Object> getDetail(@PathVariable Long id) {
+        Map<String, Object> map = new HashMap<>();
+        try {
+            Map<String, Object> detail = paperService.getPaperDetail(id);
+            map.put("code", 200);
+            map.put("data", detail);
+        } catch (Exception e) {
+            map.put("code", 400);
+            map.put("msg", e.getMessage());
+        }
+        return map;
+    }
+
+    // 智能组卷
     @PostMapping("/create")
     public Map<String, Object> create(@RequestBody PaperCreateRequest request) {
         Map<String, Object> map = new HashMap<>();
@@ -41,5 +57,4 @@ public class PaperController {
         }
         return map;
     }
-    // 我们暂时还没有“创建”接口，等写“智能组卷”时再加
 }

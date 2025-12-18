@@ -21,7 +21,7 @@
             <span>仪表盘</span>
           </el-menu-item>
 
-          <el-sub-menu index="2">
+          <el-sub-menu index="2" v-if="user.role === 'ADMIN'">
             <template #title>
               <el-icon><School /></el-icon>
               <span>教务管理</span>
@@ -30,10 +30,6 @@
               <el-icon><User /></el-icon>
               <span>人员管理</span>
             </el-menu-item>
-            <el-menu-item index="/conflict">
-              <el-icon><Warning /></el-icon>
-              <span>冲突处理</span>
-            </el-menu-item>
           </el-sub-menu>
 
           <el-sub-menu index="3">
@@ -41,22 +37,27 @@
               <el-icon><Reading /></el-icon>
               <span>考试中心</span>
             </template>
-            <el-menu-item index="/questions">
+
+            <el-menu-item index="/question/list" v-if="['ADMIN', 'TEACHER'].includes(user.role)">
               <el-icon><DocumentCopy /></el-icon>
               <span>题库管理</span>
             </el-menu-item>
-            <el-menu-item index="/paper/list">
+
+            <el-menu-item index="/paper/list" v-if="['ADMIN', 'TEACHER'].includes(user.role)">
               <el-icon><Files /></el-icon>
               <span>试卷管理</span>
             </el-menu-item>
-            <el-menu-item index="/exam/list">
+
+            <el-menu-item index="/exam/list" v-if="user.role === 'STUDENT'">
               <el-icon><EditPen /></el-icon>
               <span>在线考试</span>
             </el-menu-item>
-            <el-menu-item index="/score/manage" v-if="user.role === 'ADMIN' || user.role === 'TEACHER'">
+
+            <el-menu-item index="/score/manage" v-if="['ADMIN', 'TEACHER'].includes(user.role)">
               <el-icon><DataAnalysis /></el-icon>
               <span>成绩管理</span>
             </el-menu-item>
+
             <el-menu-item index="/score/my" v-if="user.role === 'STUDENT'">
               <el-icon><Trophy /></el-icon>
               <span>我的成绩</span>
@@ -76,6 +77,10 @@
               <el-icon><List /></el-icon>
               <span>日志记录</span>
             </el-menu-item>
+            <el-menu-item index="/conflict">
+              <el-icon><Warning /></el-icon>
+              <span>冲突处理</span>
+            </el-menu-item>
           </el-sub-menu>
 
         </el-menu>
@@ -89,7 +94,12 @@
           </div>
           <div class="user-info">
             <el-avatar :size="32" :src="'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'" />
-            <span class="username">{{ user.realName || user.username }}</span>
+            <span class="username">
+              {{ user.realName || user.username }}
+              <el-tag size="small" effect="plain" style="margin-left:5px">
+                {{ getRoleName(user.role) }}
+              </el-tag>
+            </span>
             <el-button type="danger" link size="small" @click="logout" style="margin-left: 15px;">退出</el-button>
           </div>
         </el-header>
@@ -115,11 +125,22 @@ import {
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
+// 获取用户信息，如果没有则默认为空对象
 const user = JSON.parse(localStorage.getItem('user') || '{}')
 
 const logout = () => {
   localStorage.removeItem('user')
   router.push('/login')
+}
+
+// 辅助函数：显示中文角色名
+const getRoleName = (role: string) => {
+  const map: Record<string, string> = {
+    ADMIN: '管理员',
+    TEACHER: '教师',
+    STUDENT: '学生'
+  }
+  return map[role] || role
 }
 </script>
 
@@ -158,7 +179,7 @@ const logout = () => {
 .breadcrumb { display: flex; align-items: center; color: #606266; }
 .fold-btn { margin-right: 10px; font-size: 20px; cursor: pointer; }
 .user-info { display: flex; align-items: center; }
-.username { margin-left: 8px; font-size: 14px; color: #303133; }
+.username { margin-left: 8px; font-size: 14px; color: #303133; display: flex; align-items: center;}
 
 /* 内容区动画 */
 .main-content { background-color: #f0f2f5; padding: 20px; }

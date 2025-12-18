@@ -23,10 +23,13 @@ public class ExamResult {
 
     private BigDecimal score;
 
-    @Column(name = "exam_time")
-    private LocalDateTime examTime;
+    @Column(name = "student_answers", columnDefinition = "TEXT")
+    private String studentAnswers;
+
+    @Column(name = "create_time")
+    private LocalDateTime createTime;
 
     public ExamResult() {
-        this.examTime = LocalDateTime.now();
+        this.createTime = LocalDateTime.now();
     }
 }

@@ -6,5 +6,11 @@ import lombok.Data;
 public class PaperCreateRequest {
     private String paperName;
     private Long teacherId;  // 谁出的卷子
-    private Integer questionCount; // 要抽多少道题
+
+    // 各题型抽取的数量
+    private Integer singleCount;   // 单选题数量
+    private Integer multiCount;    // 多选题数量
+    private Integer judgeCount;    // 判断题数量
+    private Integer fillCount;     // 填空题数量
+    private Integer essayCount;    // 简答题数量
 }

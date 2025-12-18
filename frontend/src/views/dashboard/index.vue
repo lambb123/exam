@@ -2,204 +2,130 @@
   <div class="dashboard-container">
     <div class="welcome-card">
       <div class="welcome-text">
-        <h2>👋 欢迎回来，{{ user.realName }}！</h2>
-        <p>今天是 {{ currentDate }}，系统运行平稳。</p>
+        <h2>👋 欢迎回来，{{ user.realName || user.username }}！</h2>
+        <p>今天是 {{ currentDate }}，愿您通过系统高效完成同步工作。</p>
       </div>
       <img src="https://img.freepik.com/free-vector/exams-concept-illustration_114360-2754.jpg" class="welcome-img" alt="bg"/>
     </div>
 
-    <el-row :gutter="20" style="margin-bottom: 20px;">
-      <el-col :span="14">
-        <el-card class="status-card" shadow="hover">
-          <template #header>
-            <div class="card-header">
-              <span>📡 数据库连接状态</span>
-              <el-button link type="primary" @click="fetchDbStatus">刷新状态</el-button>
+    <el-row :gutter="20" class="mb-20">
+      <el-col :span="6" v-for="(item, index) in statItems" :key="item.key">
+        <div class="stat-card" :class="'style-' + (index + 1)">
+          <div class="stat-icon-bg">
+            <el-icon><component :is="item.icon" /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-label">{{ item.label }}</div>
+            <div class="stat-value">
+              <span class="num">{{ stats[item.key] || 0 }}</span>
             </div>
-          </template>
-          <el-row :gutter="20">
-            <el-col :span="8" v-for="(status, name) in dbStatus" :key="name">
-              <div class="db-item" :class="{ 'is-active': status }">
-                <div class="db-icon" :class="String(name)">
-                  {{ String(name).toUpperCase().substring(0, 1) }}
-                </div>
-                <div class="db-info">
-                  <div class="db-name">{{ getDbName(String(name)) }}</div>
-                  <div class="db-state">
-                    <span class="dot"></span> {{ status ? '连接正常' : '连接断开' }}
-                  </div>
-                </div>
-              </div>
-            </el-col>
-          </el-row>
-        </el-card>
-      </el-col>
-
-      <el-col :span="10">
-        <el-row :gutter="15">
-          <el-col :span="12" v-for="(value, key) in stats" :key="key" style="margin-bottom: 15px;">
-            <el-card shadow="hover" class="stat-card" :class="'color-' + getKeyIndex(String(key))">
-              <div class="stat-content">
-                <div class="number">{{ value }}</div>
-                <div class="label">{{ getStatLabel(String(key)) }}</div>
-              </div>
-            </el-card>
-          </el-col>
-        </el-row>
+          </div>
+        </div>
       </el-col>
     </el-row>
 
-    <el-card class="log-table-card" shadow="hover">
+    <el-card class="db-card" shadow="hover">
       <template #header>
         <div class="card-header">
-          <span>📜 系统同步日志记录</span>
-          <el-button type="primary" size="small" @click="fetchLogs" :loading="logLoading">
-            刷新日志
+          <span class="title">📡 数据库集群状态监控</span>
+          <el-button text type="primary" :loading="dbLoading" @click="fetchDbStatus">
+            <el-icon class="mr-1"><Refresh /></el-icon> 刷新状态
           </el-button>
         </div>
       </template>
 
-      <el-table
-        :data="paginatedLogs"
-        style="width: 100%"
-        border
-        stripe
-        v-loading="logLoading"
-        max-height="500"
-      >
-        <el-table-column prop="id" label="ID" width="80" align="center" />
+      <el-row :gutter="40" class="db-row">
+        <el-col :span="8">
+          <div class="db-status-item" :class="{ 'online': dbStatus.mysql }">
+            <div class="status-icon">
+              <span class="db-type">MySQL</span>
+              <span class="role-tag main">主库</span>
+            </div>
+            <div class="status-detail">
+              <div class="status-text">
+                <div class="dot"></div>
+                {{ dbStatus.mysql ? '运行正常' : '连接断开' }}
+              </div>
+              <div class="desc">源数据中心</div>
+            </div>
+          </div>
+        </el-col>
 
-        <el-table-column label="开始时间" width="180" align="center">
-          <template #default="scope">
-            {{ formatTime(scope.row.startTime) }}
-          </template>
-        </el-table-column>
+        <el-col :span="8">
+          <div class="db-status-item" :class="{ 'online': dbStatus.oracle }">
+            <div class="status-icon">
+              <span class="db-type">Oracle</span>
+              <span class="role-tag backup">备库</span>
+            </div>
+            <div class="status-detail">
+              <div class="status-text">
+                <div class="dot"></div>
+                {{ dbStatus.oracle ? '运行正常' : '连接断开' }}
+              </div>
+              <div class="desc">异地灾备节点</div>
+            </div>
+          </div>
+        </el-col>
 
-        <el-table-column label="结束时间" width="180" align="center">
-          <template #default="scope">
-            {{ formatTime(scope.row.endTime) }}
-          </template>
-        </el-table-column>
-
-        <el-table-column prop="status" label="同步状态" width="120" align="center">
-          <template #default="scope">
-            <el-tag :type="getLogStatusType(scope.row.status)" effect="dark">
-              {{ scope.row.status === 'SUCCESS' ? '成功' : (scope.row.status === 'FAILED' ? '失败' : '进行中') }}
-            </el-tag>
-          </template>
-        </el-table-column>
-
-        <el-table-column prop="message" label="日志详情 / 报错信息" min-width="400">
-          <template #default="scope">
-            <span :class="{ 'error-msg': scope.row.status === 'FAILED' }">
-              {{ scope.row.message }}
-            </span>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <div class="pagination-container">
-        <el-pagination
-          v-model:current-page="currentPage"
-          v-model:page-size="pageSize"
-          :page-sizes="[5, 10, 20, 50]"
-          layout="total, sizes, prev, pager, next, jumper"
-          :total="allLogs.length"
-        />
-      </div>
+        <el-col :span="8">
+          <div class="db-status-item" :class="{ 'online': dbStatus.sqlserver }">
+            <div class="status-icon">
+              <span class="db-type">SQL Server</span>
+              <span class="role-tag backup">备库</span>
+            </div>
+            <div class="status-detail">
+              <div class="status-text">
+                <div class="dot"></div>
+                {{ dbStatus.sqlserver ? '运行正常' : '连接断开' }}
+              </div>
+              <div class="desc">数据分析节点</div>
+            </div>
+          </div>
+        </el-col>
+      </el-row>
     </el-card>
 
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, reactive } from 'vue'
 import { getDashboardStats, getDbStatus } from '@/api/dashboard'
-import { getSyncLogs } from '@/api/log'
+import { User, DocumentCopy, Files, EditPen, Refresh } from '@element-plus/icons-vue'
 
 const user = JSON.parse(localStorage.getItem('user') || '{}')
-const currentDate = new Date().toLocaleDateString()
+const currentDate = new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })
 
-// === 数据定义 ===
+const dbLoading = ref(false)
 const stats = ref<Record<string, number>>({})
 const dbStatus = ref<Record<string, boolean>>({ mysql: false, oracle: false, sqlserver: false })
 
-const allLogs = ref<any[]>([]) // 所有日志数据
-const logLoading = ref(false)
-
-// === 分页配置 ===
-const currentPage = ref(1)
-const pageSize = ref(10) // 默认每页10条
-
-// 前端分页计算
-const paginatedLogs = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value
-  return allLogs.value.slice(start, start + pageSize.value)
-})
-
-// === 辅助方法 ===
-const getDbName = (key: string) => {
-  const map: Record<string, string> = { mysql: 'MySQL (主)', oracle: 'Oracle (备)', sqlserver: 'SQL Server (备)' }
-  return map[key] || key.toUpperCase()
-}
-
-const getKeyIndex = (key: string) => {
-  const keys = Object.keys(stats.value)
-  return (keys.indexOf(key) % 4) + 1
-}
-
-const getStatLabel = (key: string) => {
-  const map: Record<string, string> = {
-    userCount: '用户总数', questionCount: '题库数量',
-    paperCount: '试卷总数', examCount: '考试人次'
-  }
-  return map[key] || key
-}
-
-const getLogStatusType = (status: string) => {
-  if (status === 'SUCCESS') return 'success'
-  if (status === 'FAILED') return 'danger'
-  return 'primary'
-}
-
-const formatTime = (time: string) => {
-  if (!time) return '-'
-  return time.replace('T', ' ').split('.')[0]
-}
+// 定义统计项配置，方便循环渲染
+const statItems = [
+  { key: 'userCount', label: '注册用户总数', icon: User },
+  { key: 'questionCount', label: '题库试题数量', icon: DocumentCopy },
+  { key: 'paperCount', label: '已组试卷总数', icon: Files },
+  { key: 'examCount', label: '在线考试人次', icon: EditPen }
+]
 
 // === 数据请求 ===
 const loadDashboardData = async () => {
-  // 1. 获取统计
   try {
     const sRes: any = await getDashboardStats()
     if (sRes.code === 200) stats.value = sRes.data
   } catch (e) {}
 
-  // 2. 获取状态
   fetchDbStatus()
-
-  // 3. 获取日志
-  fetchLogs()
 }
 
 const fetchDbStatus = async () => {
+  dbLoading.value = true
   try {
     const res: any = await getDbStatus()
     if (res.code === 200) dbStatus.value = res.data
-  } catch (e) {}
-}
-
-const fetchLogs = async () => {
-  logLoading.value = true
-  try {
-    const res: any = await getSyncLogs()
-    if (res.code === 200 && res.data) {
-      allLogs.value = res.data
-    }
   } catch (e) {
-    console.error(e)
   } finally {
-    logLoading.value = false
+    dbLoading.value = false
   }
 }
 
@@ -209,56 +135,86 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.dashboard-container { padding: 20px; background-color: #f0f2f5; min-height: 100vh; }
+.dashboard-container { padding: 24px; background-color: #f5f7fa; min-height: 100vh; }
+.mb-20 { margin-bottom: 24px; }
+.mr-1 { margin-right: 4px; }
 
-/* 欢迎栏 */
+/* 1. 欢迎卡片美化 */
 .welcome-card {
-  background: white; padding: 20px 40px; border-radius: 8px;
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 20px; box-shadow: 0 2px 12px 0 rgba(0,0,0,0.05);
+  background: linear-gradient(135deg, #ffffff 0%, #f0f7ff 100%);
+  padding: 30px 40px;
+  border-radius: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+  border: 1px solid #eef2f6;
 }
-.welcome-text h2 { margin: 0 0 10px 0; color: #303133; }
-.welcome-text p { color: #909399; margin: 0; }
-.welcome-img { height: 80px; object-fit: contain; }
+.welcome-text h2 { margin: 0 0 12px 0; color: #1a1a1a; font-size: 24px; font-weight: 600; }
+.welcome-text p { color: #606266; margin: 0; font-size: 14px; }
+.welcome-img { height: 100px; object-fit: contain; }
 
-/* 状态卡片 */
-.status-card { height: 100%; }
+/* 2. 统计卡片美化 */
+.stat-card {
+  background: white;
+  border-radius: 12px;
+  padding: 25px;
+  display: flex;
+  align-items: center;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  transition: all 0.3s ease;
+  border: 1px solid transparent;
+  height: 120px;
+  position: relative;
+  overflow: hidden;
+}
+.stat-card:hover { transform: translateY(-5px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08); }
+
+/* 不同的卡片风格 */
+.style-1 { border-bottom: 3px solid #409eff; }
+.style-1 .stat-icon-bg { background: rgba(64, 158, 255, 0.1); color: #409eff; }
+.style-2 { border-bottom: 3px solid #67c23a; }
+.style-2 .stat-icon-bg { background: rgba(103, 194, 58, 0.1); color: #67c23a; }
+.style-3 { border-bottom: 3px solid #e6a23c; }
+.style-3 .stat-icon-bg { background: rgba(230, 162, 60, 0.1); color: #e6a23c; }
+.style-4 { border-bottom: 3px solid #f56c6c; }
+.style-4 .stat-icon-bg { background: rgba(245, 108, 108, 0.1); color: #f56c6c; }
+
+.stat-icon-bg {
+  width: 60px; height: 60px; border-radius: 50%;
+  display: flex; justify-content: center; align-items: center;
+  font-size: 28px; margin-right: 20px;
+}
+.stat-info { flex: 1; }
+.stat-label { font-size: 14px; color: #909399; margin-bottom: 8px; }
+.stat-value .num { font-size: 32px; font-weight: bold; color: #303133; font-family: 'DIN Alternate', sans-serif; }
+
+/* 3. 数据库状态卡片 */
+.db-card { border-radius: 12px; border: none; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04); }
 .card-header { display: flex; justify-content: space-between; align-items: center; }
+.card-header .title { font-size: 16px; font-weight: bold; color: #303133; }
+.db-row { padding: 20px 0; }
 
-.db-item {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  padding: 15px; border-radius: 6px; background: #f5f7fa; border: 1px solid #EBEEF5;
-  transition: all 0.3s; margin-bottom: 5px;
+.db-status-item {
+  background: #f8f9fa; border-radius: 8px; padding: 20px;
+  border: 1px solid #ebeef5; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; text-align: center;
+  transition: all 0.3s;
 }
-.db-item.is-active { background: #f0f9eb; border-color: #67c23a; }
+.db-status-item.online { background: #f0f9eb; border-color: #e1f3d8; }
+.db-status-item:hover { transform: scale(1.02); }
 
-.db-icon {
-  width: 48px; height: 48px; border-radius: 50%; color: white;
-  display: flex; justify-content: center; align-items: center; font-weight: bold; font-size: 20px;
-  margin-bottom: 10px;
-}
-.db-icon.mysql { background: #00758f; }
-.db-icon.oracle { background: #f80000; }
-.db-icon.sqlserver { background: #666; }
-.is-active .db-icon.sqlserver { background: #333; }
+.status-icon { margin-bottom: 15px; position: relative; }
+.db-type { font-weight: bold; font-size: 18px; color: #303133; display: block; margin-bottom: 5px; }
+.role-tag { font-size: 10px; padding: 2px 6px; border-radius: 4px; color: white; text-transform: uppercase; }
+.role-tag.main { background: #409eff; }
+.role-tag.backup { background: #909399; }
 
-.db-name { font-weight: bold; font-size: 14px; color: #606266; margin-bottom: 5px; }
-.db-state { font-size: 12px; color: #909399; display: flex; align-items: center; }
-.is-active .db-state { color: #67c23a; }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: #f56c6c; margin-right: 5px; display: inline-block; }
-.is-active .dot { background: #67c23a; animation: breathe 2s infinite; }
-@keyframes breathe { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+.status-text { display: flex; align-items: center; justify-content: center; font-size: 14px; color: #909399; margin-bottom: 4px; }
+.online .status-text { color: #67c23a; font-weight: bold; }
+.dot { width: 8px; height: 8px; background: #f56c6c; border-radius: 50%; margin-right: 6px; }
+.online .dot { background: #67c23a; box-shadow: 0 0 0 2px rgba(103, 194, 58, 0.2); }
 
-/* 统计卡片 */
-.stat-card { text-align: center; cursor: pointer; transition: transform 0.2s; border: none; height: 100px; display: flex; align-items: center; justify-content: center; }
-.stat-card:hover { transform: translateY(-3px); }
-.stat-content .number { font-size: 28px; font-weight: bold; color: #303133; margin-bottom: 5px; }
-.stat-content .label { font-size: 13px; color: #909399; }
-.color-1 { background: #e8f3ff; } .color-2 { background: #f0f9eb; }
-.color-3 { background: #fdf6ec; } .color-4 { background: #fef0f0; }
-
-/* 日志卡片 */
-.log-table-card { margin-top: 0; }
-.error-msg { color: #F56C6C; font-family: monospace; }
-.pagination-container { margin-top: 20px; display: flex; justify-content: flex-end; }
+.desc { font-size: 12px; color: #c0c4cc; }
 </style>

@@ -73,7 +73,7 @@ public class SyncService {
     private EntityManager sqlServerEm;
 
     // === 定时任务入口 ===
-    @Scheduled(cron = "0/30 * * * * ?")
+    @Scheduled(cron = "0/5 * * * * ?")
     public void syncData() {
         System.out.println("【同步任务开始】...");
 
@@ -305,6 +305,151 @@ public class SyncService {
                     ps.executeBatch();
                 }
                 try (Statement stmt = connection.createStatement()) { stmt.execute("SET IDENTITY_INSERT dbo.exam_result OFF"); }
+            }
+        });
+    }
+
+
+
+
+
+    // ==========================================
+    // 【新增】冲突处理：单条数据修复 (Oracle)
+    // ==========================================
+
+    /**
+     * 修复 Oracle 单个用户数据
+     */
+    @Transactional(transactionManager = "transactionManagerOracle")
+    public void syncSingleUserToOracle(Long userId) {
+        // 1. 从主库获取最新数据
+        User u = mysqlUserRepo.findById(userId).orElse(null);
+        if (u == null) {
+            // 如果主库也没了，理论上应该删除备库数据，这里简单处理为返回
+            return;
+        }
+
+        // 2. 删除旧数据（防止主键冲突）
+        oracleEm.createNativeQuery("DELETE FROM sys_user WHERE id = ?1").setParameter(1, userId).executeUpdate();
+
+        // 3. 插入新数据
+        String sql = "INSERT INTO sys_user (id, username, password, role, real_name, create_time) VALUES (?1, ?2, ?3, ?4, ?5, ?6)";
+        oracleEm.createNativeQuery(sql)
+                .setParameter(1, u.getId())
+                .setParameter(2, u.getUsername())
+                .setParameter(3, u.getPassword())
+                .setParameter(4, u.getRole())
+                .setParameter(5, u.getRealName())
+                .setParameter(6, u.getCreateTime())
+                .executeUpdate();
+    }
+
+    /**
+     * 修复 Oracle 单个试卷数据
+     */
+    @Transactional(transactionManager = "transactionManagerOracle")
+    public void syncSinglePaperToOracle(Long paperId) {
+        Paper p = mysqlPaperRepo.findById(paperId).orElse(null);
+        if (p == null) return;
+
+        // 删除旧数据
+        oracleEm.createNativeQuery("DELETE FROM paper WHERE id = ?1").setParameter(1, paperId).executeUpdate();
+
+        // 插入新数据
+        Long teacherId = p.getTeacher() != null ? p.getTeacher().getId() : null;
+        String sql = "INSERT INTO paper (id, paper_name, total_score, teacher_id, create_time) VALUES (?1, ?2, ?3, ?4, ?5)";
+        oracleEm.createNativeQuery(sql)
+                .setParameter(1, p.getId())
+                .setParameter(2, p.getPaperName())
+                .setParameter(3, p.getTotalScore())
+                .setParameter(4, teacherId)
+                .setParameter(5, p.getCreateTime())
+                .executeUpdate();
+    }
+
+
+    // ==========================================
+    // 【新增】冲突处理：单条数据修复 (SQL Server)
+    // 注意：SQL Server 插入带 ID 的记录需要开启 IDENTITY_INSERT
+    // ==========================================
+
+    /**
+     * 修复 SQL Server 单个用户数据
+     */
+    @Transactional(transactionManager = "transactionManagerSqlServer")
+    public void syncSingleUserToSqlServer(Long userId) {
+        User u = mysqlUserRepo.findById(userId).orElse(null);
+        if (u == null) return;
+
+        Session session = sqlServerEm.unwrap(Session.class);
+        session.doWork(connection -> {
+            try (Statement stmt = connection.createStatement()) {
+                // 1. 先删除旧数据
+                try (PreparedStatement psDel = connection.prepareStatement("DELETE FROM dbo.sys_user WHERE id = ?")) {
+                    psDel.setLong(1, userId);
+                    psDel.executeUpdate();
+                }
+
+                // 2. 开启身份插入（允许手动指定 ID）
+                stmt.execute("SET IDENTITY_INSERT dbo.sys_user ON");
+
+                // 3. 插入新数据
+                String insertSql = "INSERT INTO dbo.sys_user (id, username, password, role, real_name, create_time) VALUES (?, ?, ?, ?, ?, ?)";
+                try (PreparedStatement ps = connection.prepareStatement(insertSql)) {
+                    ps.setLong(1, u.getId());
+                    ps.setString(2, u.getUsername());
+                    ps.setString(3, u.getPassword());
+                    ps.setString(4, u.getRole());
+                    ps.setString(5, u.getRealName());
+                    ps.setTimestamp(6, u.getCreateTime() != null ? Timestamp.valueOf(u.getCreateTime()) : null);
+                    ps.executeUpdate();
+                }
+
+                // 4. 关闭身份插入
+                stmt.execute("SET IDENTITY_INSERT dbo.sys_user OFF");
+            } catch (Exception e) {
+                e.printStackTrace();
+                throw new RuntimeException("SQL Server 单条用户同步失败: " + e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * 修复 SQL Server 单个试卷数据
+     */
+    @Transactional(transactionManager = "transactionManagerSqlServer")
+    public void syncSinglePaperToSqlServer(Long paperId) {
+        Paper p = mysqlPaperRepo.findById(paperId).orElse(null);
+        if (p == null) return;
+
+        Session session = sqlServerEm.unwrap(Session.class);
+        session.doWork(connection -> {
+            try (Statement stmt = connection.createStatement()) {
+                // 1. 删除旧数据
+                try (PreparedStatement psDel = connection.prepareStatement("DELETE FROM dbo.paper WHERE id = ?")) {
+                    psDel.setLong(1, paperId);
+                    psDel.executeUpdate();
+                }
+
+                // 2. 开启身份插入
+                stmt.execute("SET IDENTITY_INSERT dbo.paper ON");
+
+                // 3. 插入新数据
+                String insertSql = "INSERT INTO dbo.paper (id, paper_name, total_score, teacher_id, create_time) VALUES (?, ?, ?, ?, ?)";
+                try (PreparedStatement ps = connection.prepareStatement(insertSql)) {
+                    ps.setLong(1, p.getId());
+                    ps.setString(2, p.getPaperName());
+                    ps.setObject(3, p.getTotalScore(), Types.INTEGER);
+                    ps.setObject(4, p.getTeacher() != null ? p.getTeacher().getId() : null, Types.BIGINT);
+                    ps.setTimestamp(5, p.getCreateTime() != null ? Timestamp.valueOf(p.getCreateTime()) : null);
+                    ps.executeUpdate();
+                }
+
+                // 4. 关闭身份插入
+                stmt.execute("SET IDENTITY_INSERT dbo.paper OFF");
+            } catch (Exception e) {
+                e.printStackTrace();
+                throw new RuntimeException("SQL Server 单条试卷同步失败: " + e.getMessage());
             }
         });
     }

@@ -62,4 +62,19 @@ public class ExamController {
         List<ExamResult> list = examService.findAllResults();
         return Map.of("code", 200, "data", list);
     }
+
+    // 【新增】获取答卷详情
+    @GetMapping("/result/detail/{id}")
+    public Map<String, Object> getResultDetail(@PathVariable Long id) {
+        Map<String, Object> map = new HashMap<>();
+        try {
+            Map<String, Object> data = examService.getExamResultDetail(id);
+            map.put("code", 200);
+            map.put("data", data);
+        } catch (Exception e) {
+            map.put("code", 400);
+            map.put("msg", e.getMessage());
+        }
+        return map;
+    }
 }

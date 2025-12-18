@@ -8,7 +8,15 @@ export const getPaperList = () => {
   })
 }
 
-// 新增：智能组卷
+// 【新增】获取详情
+export const getPaperDetail = (id: number) => {
+  return request({
+    url: `/api/paper/${id}`,
+    method: 'get'
+  })
+}
+
+// 智能组卷
 export const createPaper = (data: any) => {
   return request({
     url: '/api/paper/create',

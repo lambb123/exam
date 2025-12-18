@@ -7,6 +7,7 @@ import java.util.Map;
 public class ExamSubmitRequest {
     private Long studentId;
     private Long paperId;
-    // 键是题目ID，值是学生的答案（例如：{1: "A", 2: "B"}）
+
+    // 前端传来的答案集合：key是题目ID，value是答案字符串
     private Map<Long, String> answers;
 }
