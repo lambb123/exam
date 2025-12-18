@@ -6,61 +6,113 @@ const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
+      path: '/',
+      redirect: '/dashboard'
+    },
+    {
       path: '/login',
       name: 'login',
       component: LoginView
     },
     {
-      path: '/',
+      path: '/home',
       name: 'home',
       component: HomeView,
-      redirect: '/dashboard', // 默认跳到仪表盘
+      redirect: '/dashboard',
       children: [
         {
-          path: 'dashboard',
-          component: () => import('../views/dashboard/index.vue')
+          path: '/dashboard',
+          name: 'dashboard',
+          component: () => import('../views/dashboard/index.vue'),
+          meta: { title: '仪表盘' }
+        },
+        // === 业务管理 ===
+        {
+          path: '/education',
+          name: 'education',
+          component: () => import('../views/EducationManager.vue'),
+          meta: { title: '教务管理' }
         },
         {
-          path: 'question/list',
-          component: () => import('../views/question/QuestionList.vue')
+          path: '/questions',
+          name: 'questions',
+          component: () => import('../views/question/QuestionList.vue'),
+          meta: { title: '题库管理' }
         },
         {
-          path: 'question/add',
-          component: () => import('../views/question/QuestionAdd.vue')
+          path: '/question/add',
+          name: 'question-add',
+          component: () => import('../views/question/QuestionAdd.vue'),
+          meta: { title: '添加试题' }
         },
         {
-          path: 'paper/list',
-          component: () => import('../views/paper/PaperList.vue')
+          path: '/paper/list',
+          name: 'paper-list',
+          component: () => import('../views/paper/PaperList.vue'),
+          meta: { title: '试卷管理' }
         },
         {
-          path: 'paper/create',
-          component: () => import('../views/paper/PaperCreate.vue')
+          path: '/paper/create',
+          name: 'paper-create',
+          component: () => import('../views/paper/PaperCreate.vue'),
+          meta: { title: '组卷' }
         },
         {
-          path: 'exam/list',
-          component: () => import('../views/exam/ExamList.vue')
+          path: '/exam/list',
+          name: 'exam-list',
+          component: () => import('../views/exam/ExamList.vue'),
+          meta: { title: '在线考试' }
         },
         {
-          path: 'exam/do/:id', // :id 是参数，代表试卷ID
-          component: () => import('../views/exam/ExamDoing.vue')
+          path: '/exam/doing',
+          name: 'exam-doing',
+          component: () => import('../views/exam/ExamDoing.vue'),
+          meta: { title: '正在考试' }
         },
         {
-          path: 'score/my',
-          component: () => import('../views/score/MyScore.vue')
+          path: '/score/manage',
+          name: 'score-manage',
+          component: () => import('../views/score/ScoreManage.vue'),
+          meta: { title: '成绩管理' }
         },
-        // 教师管理分
         {
-          path: 'score/manage',
-          component: () => import('../views/score/ScoreManage.vue')
-        }
-        // 其他页面后续再加
+          path: '/score/my',
+          name: 'score-my',
+          component: () => import('../views/score/MyScore.vue'),
+          meta: { title: '我的成绩' }
+        },
 
+        // === 【新增】系统监控模块 ===
+        {
+          path: '/monitor',
+          name: 'monitor',
+          component: () => import('../views/SyncMonitor.vue'),
+          meta: { title: '同步监控' }
+        },
+        {
+          path: '/logs',
+          name: 'logs',
+          component: () => import('../views/LogViewer.vue'), // 或者是 LogViewer.vue
+          meta: { title: '日志记录' }
+        },
+        {
+          path: '/conflict',
+          name: 'conflict',
+          component: () => import('../views/ConflictResolver.vue'),
+          meta: { title: '冲突处理' }
+        },
+        {
+          path: '/about',
+          name: 'about',
+          component: () => import('../views/AboutView.vue'),
+          meta: { title: '关于系统' }
+        }
       ]
     }
   ]
 })
 
-// 路由守卫：没登录不准进首页
+// 路由守卫：未登录跳转登录页
 router.beforeEach((to, from, next) => {
   const user = localStorage.getItem('user')
   if (to.path !== '/login' && !user) {
