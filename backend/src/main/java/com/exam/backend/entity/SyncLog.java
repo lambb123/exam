@@ -15,6 +15,10 @@ public class SyncLog {
     @Column(name = "start_time")
     private LocalDateTime startTime;
 
+
+    @Column(name = "create_time")
+    private LocalDateTime createTime;
+
     @Column(name = "end_time")
     private LocalDateTime endTime;
 
@@ -24,6 +28,11 @@ public class SyncLog {
     // 报错信息通常较长，建议设为 2000 或 4000，甚至可以用 @Lob
     @Column(name = "message", length = 4000)
     private String message;
+
+    public SyncLog() {
+        this.createTime = LocalDateTime.now();
+    }
+
 
     // === Getters & Setters ===
     public Long getId() { return id; }

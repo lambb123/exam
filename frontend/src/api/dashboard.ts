@@ -15,3 +15,13 @@ export const getDbStatus = () => {
     method: 'get'
   })
 }
+
+/**
+ * 获取试卷复杂统计数据 (多表连接 + 聚合查询)
+ */
+export function getPaperStats() {
+  return request({
+    url: '/api/dashboard/stats/papers', // 对应后端 DashboardController 的接口
+    method: 'get'
+  })
+}

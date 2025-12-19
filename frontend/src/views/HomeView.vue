@@ -81,6 +81,14 @@
               <el-icon><Warning /></el-icon>
               <span>冲突处理</span>
             </el-menu-item>
+            <el-menu-item index="/analysis">
+              <el-icon><TrendCharts /></el-icon>
+              <span>复杂统计分析</span>
+            </el-menu-item>
+            <el-menu-item index="/dictionary">
+              <el-icon><Notebook /></el-icon>
+              <span>数据字典</span>
+            </el-menu-item>
           </el-sub-menu>
 
         </el-menu>

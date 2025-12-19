@@ -38,27 +38,53 @@
           </el-col>
         </el-row>
 
-        <el-form-item label="题目内容" required>
+        <el-form-item label="题目描述" required>
           <el-input
-            v-model="form.content"
+            v-model="stem"
             type="textarea"
-            :rows="5"
-            placeholder="请输入题目描述。如果是选择题，请将选项也写在这里，例如：
-1. Java是哪年诞生的？
-A. 1990
-B. 1995
-C. 2000
-D. 2005"
+            :rows="3"
+            placeholder="请输入主要的问题描述（不要在这里手写选项 A. B. C. ...）"
           />
         </el-form-item>
+
+        <div v-if="isChoiceQuestion" class="options-panel">
+          <el-form-item
+            v-for="(opt, index) in options"
+            :key="opt.label"
+            :label="'选项 ' + opt.label"
+            label-width="120px"
+          >
+            <div style="display: flex; width: 100%;">
+              <el-input v-model="opt.value" :placeholder="'请输入选项 ' + opt.label + ' 的内容'" />
+              <el-button
+                v-if="options.length > 2"
+                type="danger"
+                icon="Delete"
+                circle
+                plain
+                style="margin-left: 10px;"
+                @click="removeOption(index)"
+              />
+            </div>
+          </el-form-item>
+
+          <div style="margin-left: 120px; margin-bottom: 20px;">
+            <el-button type="primary" plain size="small" @click="addOption" icon="Plus">添加选项</el-button>
+            <span style="font-size: 12px; color: #999; margin-left: 10px;">(最多支持 6 个选项)</span>
+          </div>
+        </div>
 
         <el-form-item label="正确答案" required>
 
           <el-radio-group v-model="form.answer" v-if="form.type === '单选'">
-            <el-radio label="A" border>A</el-radio>
-            <el-radio label="B" border>B</el-radio>
-            <el-radio label="C" border>C</el-radio>
-            <el-radio label="D" border>D</el-radio>
+            <el-radio
+              v-for="opt in options"
+              :key="opt.label"
+              :label="opt.label"
+              border
+            >
+              {{ opt.label }}
+            </el-radio>
           </el-radio-group>
 
           <el-radio-group v-model="form.answer" v-else-if="form.type === '判断'">
@@ -67,10 +93,14 @@ D. 2005"
           </el-radio-group>
 
           <el-checkbox-group v-model="multiAnswer" v-else-if="form.type === '多选'">
-            <el-checkbox label="A" border>A</el-checkbox>
-            <el-checkbox label="B" border>B</el-checkbox>
-            <el-checkbox label="C" border>C</el-checkbox>
-            <el-checkbox label="D" border>D</el-checkbox>
+            <el-checkbox
+              v-for="opt in options"
+              :key="opt.label"
+              :label="opt.label"
+              border
+            >
+              {{ opt.label }}
+            </el-checkbox>
           </el-checkbox-group>
 
           <el-input
@@ -92,50 +122,110 @@ D. 2005"
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
+import { reactive, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { addQuestion } from '@/api/question'
 import { ElMessage } from 'element-plus'
+import { Delete, Plus } from '@element-plus/icons-vue'
 
 const router = useRouter()
 
-// 多选的答案需要单独用数组存，提交时转字符串
-const multiAnswer = ref<string[]>([])
+// 1. 定义独立的数据状态
+const stem = ref('') // 题干
+const multiAnswer = ref<string[]>([]) // 多选答案数组
+const options = ref([ // 默认4个选项
+  { label: 'A', value: '' },
+  { label: 'B', value: '' },
+  { label: 'C', value: '' },
+  { label: 'D', value: '' }
+])
+const OPTION_LABELS = ['A', 'B', 'C', 'D', 'E', 'F']
 
 const form = reactive({
   content: '',
-  type: '单选', // 默认单选
+  type: '单选',
   difficulty: '简单',
   knowledgePoint: '',
   answer: ''
 })
 
-// 监听类型变化，重置答案，防止脏数据
+// 计算属性：是否为选择题
+const isChoiceQuestion = computed(() => {
+  return form.type === '单选' || form.type === '多选'
+})
+
+// 监听类型变化，重置状态
 const handleTypeChange = () => {
   form.answer = ''
   multiAnswer.value = []
+  // 如果切回选择题且选项列表意外为空，恢复默认
+  if (isChoiceQuestion.value && options.value.length === 0) {
+    options.value = [
+      { label: 'A', value: '' }, { label: 'B', value: '' },
+      { label: 'C', value: '' }, { label: 'D', value: '' }
+    ]
+  }
+}
+
+// ✅ 修复点：添加选项时处理 undefined
+const addOption = () => {
+  if (options.value.length >= 6) return ElMessage.warning('最多支持 6 个选项')
+
+  // 使用 || '' 防止 TS 报错 Type undefined is not assignable to type string
+  const nextLabel = OPTION_LABELS[options.value.length] || ''
+  if (nextLabel) {
+    options.value.push({ label: nextLabel, value: '' })
+  }
+}
+
+// ✅ 修复点：删除选项时处理 undefined
+const removeOption = (index: number) => {
+  options.value.splice(index, 1)
+  // 重置后续选项的 label
+  options.value.forEach((opt, idx) => {
+    // 使用 || OPTION_LABELS[idx]! 或 || '' 来消除 TS 报错
+    opt.label = OPTION_LABELS[idx] || ''
+  })
 }
 
 const onSubmit = async () => {
-  // 1. 处理多选题答案：数组转字符串 (例如 ['A','B'] -> "A,B")
+  // 1. 基础校验
+  if (!stem.value) return ElMessage.warning('请填写题目描述')
+  if (!form.knowledgePoint) return ElMessage.warning('请填写知识点')
+
+  // 2. 组装内容 (Stem + Options)
+  let finalContent = stem.value
+  if (isChoiceQuestion.value) {
+    // 校验选项是否都填了
+    for (const opt of options.value) {
+      if (!opt.value.trim()) {
+        return ElMessage.warning(`选项 ${opt.label} 内容不能为空`)
+      }
+    }
+    // 拼接成字符串
+    const optionsStr = options.value
+      .map(opt => `${opt.label}. ${opt.value}`)
+      .join('\n')
+    finalContent = `${stem.value}\n\n${optionsStr}`
+  }
+  form.content = finalContent
+
+  // 3. 处理多选题答案
   if (form.type === '多选') {
     if (multiAnswer.value.length === 0) {
       return ElMessage.warning('多选题请至少选择一个选项')
     }
     form.answer = multiAnswer.value.sort().join(',')
+  } else if (!form.answer) {
+    return ElMessage.warning('请设置正确答案')
   }
 
-  // 2. 基础校验
-  if (!form.content) return ElMessage.warning('请填写题目内容')
-  if (!form.knowledgePoint) return ElMessage.warning('请填写知识点')
-  if (!form.answer) return ElMessage.warning('请设置正确答案')
-
-  // 3. 提交
+  // 4. 提交
   try {
     const res: any = await addQuestion(form)
     if (res.code === 200) {
       ElMessage.success('添加成功')
-      router.push('/question/list') // 跳回列表
+      router.push('/question/list')
     } else {
       ElMessage.error(res.msg || '添加失败')
     }
@@ -148,4 +238,11 @@ const onSubmit = async () => {
 <style scoped>
 .page-container { padding: 20px; }
 .header { margin-bottom: 20px; }
+.options-panel {
+  background-color: #fafafa;
+  padding: 15px 15px 5px 15px;
+  border-radius: 4px;
+  margin-bottom: 22px;
+  border: 1px dashed #dcdfe6;
+}
 </style>

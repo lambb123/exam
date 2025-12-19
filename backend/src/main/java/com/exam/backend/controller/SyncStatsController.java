@@ -1,5 +1,6 @@
 package com.exam.backend.controller;
 
+import com.exam.backend.entity.SyncLog;
 import com.exam.backend.repository.mysql.*;
 import com.exam.backend.repository.oracle.*;
 import com.exam.backend.repository.sqlserver.*;
@@ -15,7 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/monitor")
+@RequestMapping("/api/monitor") // 注意：你原来的前缀是 /api/monitor，前端记得对应
 @CrossOrigin(origins = "*")
 public class SyncStatsController {
 
@@ -25,6 +26,7 @@ public class SyncStatsController {
     @Autowired private MysqlPaperRepository mysqlPaperRepo;
     @Autowired private MysqlPaperQuestionRepository mysqlPaperQuestionRepo;
     @Autowired private MysqlExamResultRepository mysqlExamResultRepo;
+    @Autowired private MysqlSyncLogRepository mysqlSyncLogRepo; // ✅ 新增：用于查日志表
 
     // === Oracle Repositories ===
     @Autowired private OracleUserRepository oracleUserRepo;
@@ -40,41 +42,44 @@ public class SyncStatsController {
     @Autowired private SqlServerPaperQuestionRepository sqlServerPaperQuestionRepo;
     @Autowired private SqlServerExamResultRepository sqlServerExamResultRepo;
 
+    // ==========================================
+    // 1. 原有功能：三库数据量实时核对 (Table Status)
+    // ==========================================
     @GetMapping("/table-status")
     public Map<String, Object> getTableStatus() {
         List<Map<String, Object>> list = new ArrayList<>();
 
-        // 1. 用户表 (sys_user)
-        list.add(buildRow("用户表 (sys_user)",
-                mysqlUserRepo.count(),
-                oracleUserRepo.count(),
-                sqlServerUserRepo.count()));
-
-        // 2. 题库表 (question)
-        list.add(buildRow("题库表 (question)",
-                mysqlQuestionRepo.count(),
-                oracleQuestionRepo.count(),
-                sqlServerQuestionRepo.count()));
-
-        // 3. 试卷表 (paper)
-        list.add(buildRow("试卷表 (paper)",
-                mysqlPaperRepo.count(),
-                oraclePaperRepo.count(),
-                sqlServerPaperRepo.count()));
-
-        // 4. 试卷题目关联表 (paper_question)
-        list.add(buildRow("试卷题目关联 (paper_question)",
-                mysqlPaperQuestionRepo.count(),
-                oraclePaperQuestionRepo.count(),
-                sqlServerPaperQuestionRepo.count()));
-
-        // 5. 考试成绩表 (exam_result)
-        list.add(buildRow("考试成绩表 (exam_result)",
-                mysqlExamResultRepo.count(),
-                oracleExamResultRepo.count(),
-                sqlServerExamResultRepo.count()));
+        list.add(buildRow("用户表 (sys_user)", mysqlUserRepo.count(), oracleUserRepo.count(), sqlServerUserRepo.count()));
+        list.add(buildRow("题库表 (question)", mysqlQuestionRepo.count(), oracleQuestionRepo.count(), sqlServerQuestionRepo.count()));
+        list.add(buildRow("试卷表 (paper)", mysqlPaperRepo.count(), oraclePaperRepo.count(), sqlServerPaperRepo.count()));
+        list.add(buildRow("试卷题目关联 (paper_question)", mysqlPaperQuestionRepo.count(), oraclePaperQuestionRepo.count(), sqlServerPaperQuestionRepo.count()));
+        list.add(buildRow("考试成绩表 (exam_result)", mysqlExamResultRepo.count(), oracleExamResultRepo.count(), sqlServerExamResultRepo.count()));
 
         return Map.of("code", 200, "data", list);
+    }
+
+    // ==========================================
+    // 2. ✅ 新增功能：移动端/大屏监控数据 (Dashboard)
+    // ==========================================
+    @GetMapping("/dashboard")
+    public Map<String, Object> getDashboardData() {
+        // 1. 每日趋势 (折线图/柱状图数据)
+        List<Map<String, Object>> trend = mysqlSyncLogRepo.findDailyStats();
+
+        // 2. 整体分布 (饼图数据)
+        Map<String, Object> distribution = mysqlSyncLogRepo.findTotalStatusDist();
+
+        // 3. 最新异常 (异常报表列表)
+        List<SyncLog> recentErrors = mysqlSyncLogRepo.findTop10ByStatusOrderByCreateTimeDesc("FAIL");
+
+        return Map.of(
+                "code", 200,
+                "data", Map.of(
+                        "trend", trend,
+                        "distribution", distribution,
+                        "recentErrors", recentErrors
+                )
+        );
     }
 
     // 辅助方法：构建一行数据并判断状态

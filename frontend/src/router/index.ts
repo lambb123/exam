@@ -14,6 +14,7 @@ const router = createRouter({
       redirect: '/dashboard',
       children: [
         { path: '/dashboard', name: 'dashboard', component: () => import('../views/dashboard/index.vue'), meta: { title: '仪表盘' } },
+        { path: '/analysis', name: 'analysis', component: () => import('../views/dashboard/AnalysisView.vue'), meta: { title: '复杂统计分析' } },
         // ... 业务管理 ...
         { path: '/education', name: 'education', component: () => import('../views/EducationManager.vue'), meta: { title: '教务管理' } },
         { path: '/question/list', name: 'questions', component: () => import('../views/question/QuestionList.vue'), meta: { title: '题库管理' } },
@@ -21,6 +22,9 @@ const router = createRouter({
         { path: '/paper/list', name: 'paper-list', component: () => import('../views/paper/PaperList.vue'), meta: { title: '试卷管理' } },
         { path: '/paper/create', name: 'paper-create', component: () => import('../views/paper/PaperCreate.vue'), meta: { title: '组卷' } },
         { path: '/paper/detail/:id', name: 'paper-detail', component: () => import('../views/paper/PaperDetail.vue'), meta: { title: '试卷详情' } },
+        {
+          path: '/dictionary', name: 'dictionary', component: () => import('../views/system/DataDictionary.vue'), meta: { title: '数据字典' }
+        },
 
         // ... 考试相关 ...
         { path: '/exam/list', name: 'exam-list', component: () => import('../views/exam/ExamList.vue'), meta: { title: '在线考试' } },

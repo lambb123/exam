@@ -23,7 +23,8 @@ public class ExamResult {
 
     private BigDecimal score;
 
-    @Column(name = "student_answers", columnDefinition = "TEXT")
+    @Lob // 告诉 Hibernate 这是一个大文本字段
+    @Column(name = "student_answers") //
     private String studentAnswers;
 
     @Column(name = "create_time")

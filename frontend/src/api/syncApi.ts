@@ -17,3 +17,20 @@ export const getTableSyncStatus = () => {
     method: 'get'
   })
 }
+
+
+// 获取同步监控大屏数据
+export const getSyncDashboardStats = () => {
+  return request({
+    url: '/api/sync/stats/dashboard',
+    method: 'get'
+  })
+}
+
+// 手动触发同步 (可选)
+export const triggerManualSync = () => {
+  return request({
+    url: '/api/sync/trigger', // 假设你有这个接口
+    method: 'post'
+  })
+}
