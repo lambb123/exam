@@ -16,7 +16,7 @@ const router = createRouter({
         { path: '/dashboard', name: 'dashboard', component: () => import('../views/dashboard/index.vue'), meta: { title: '仪表盘' } },
         // ... 业务管理 ...
         { path: '/education', name: 'education', component: () => import('../views/EducationManager.vue'), meta: { title: '教务管理' } },
-        { path: '/questions', name: 'questions', component: () => import('../views/question/QuestionList.vue'), meta: { title: '题库管理' } },
+        { path: '/question/list', name: 'questions', component: () => import('../views/question/QuestionList.vue'), meta: { title: '题库管理' } },
         { path: '/question/add', name: 'question-add', component: () => import('../views/question/QuestionAdd.vue'), meta: { title: '添加试题' } },
         { path: '/paper/list', name: 'paper-list', component: () => import('../views/paper/PaperList.vue'), meta: { title: '试卷管理' } },
         { path: '/paper/create', name: 'paper-create', component: () => import('../views/paper/PaperCreate.vue'), meta: { title: '组卷' } },

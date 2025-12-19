@@ -73,7 +73,7 @@ public class SyncService {
     private EntityManager sqlServerEm;
 
     // === 定时任务入口 ===
-    @Scheduled(cron = "0/5 * * * * ?")
+    @Scheduled(cron = "0/30 * * * * ?")
     public void syncData() {
         System.out.println("【同步任务开始】...");
 
@@ -215,7 +215,7 @@ public class SyncService {
             String sql = "INSERT INTO exam_result (id, student_id, paper_id, score, exam_time) VALUES (?1, ?2, ?3, ?4, ?5)";
             oracleEm.createNativeQuery(sql).setParameter(1, r.getId()).setParameter(2, sid)
                     .setParameter(3, pid).setParameter(4, r.getScore())
-                    .setParameter(5, r.getExamTime()).executeUpdate();
+                    .setParameter(5, r.getCreateTime()).executeUpdate();
         }
     }
 
@@ -299,7 +299,7 @@ public class SyncService {
                         ps.setObject(2, r.getStudent() != null ? r.getStudent().getId() : null, Types.BIGINT);
                         ps.setObject(3, r.getPaper() != null ? r.getPaper().getId() : null, Types.BIGINT);
                         ps.setBigDecimal(4, r.getScore());
-                        ps.setTimestamp(5, r.getExamTime() != null ? Timestamp.valueOf(r.getExamTime()) : null);
+                        ps.setTimestamp(5, r.getCreateTime() != null ? Timestamp.valueOf(r.getCreateTime()) : null);
                         ps.addBatch();
                     }
                     ps.executeBatch();

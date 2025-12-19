@@ -30,19 +30,19 @@
 
         <el-empty v-if="questionList.length === 0" description="暂无题目" />
 
-        <div v-for="(item, index) in questionList" :key="item.id" class="question-item">
+        <div v-for="(item, index) in questionList" :key="item.question.id" class="question-item">
           <div class="q-header">
-            <el-tag size="small" effect="dark" :type="getTypeColor(item.type)">{{ item.type }}</el-tag>
+            <el-tag size="small" effect="dark" :type="getTypeColor(item.question.type)">{{ item.question.type }}</el-tag>
             <span class="q-score">({{ item.score }}分)</span>
             <span class="q-index">第 {{ index + 1 }} 题</span>
           </div>
-          <div class="q-content">{{ item.content }}</div>
+          <div class="q-content">{{ item.question.content }}</div>
           <div class="q-footer">
             <span class="label">难度：</span>
-            <span>{{ item.difficulty }}</span>
+            <span>{{ item.question.difficulty }}</span>
             <el-divider direction="vertical" />
             <span class="label">参考答案：</span>
-            <span class="answer">{{ item.answer }}</span>
+            <span class="answer">{{ item.question.answer }}</span>
           </div>
         </div>
       </el-card>
@@ -70,7 +70,8 @@ const loadDetail = async () => {
     const res: any = await getPaperDetail(id)
     if (res.code === 200) {
       paperInfo.value = res.data.paperInfo
-      questionList.value = res.data.questions
+      // 这里获取到的 questionList 是 [{score:10, question:{...}}, ...]
+      questionList.value = res.data.questionList || res.data.questions // 兼容后端可能的字段名差异
     } else {
       ElMessage.error(res.msg || '获取详情失败')
     }
@@ -99,6 +100,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* 样式保持不变 */
 .page-container { padding: 20px; }
 .header { margin-bottom: 20px; }
 .paper-header-card { margin-bottom: 20px; }
