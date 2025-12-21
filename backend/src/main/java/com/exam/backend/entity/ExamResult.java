@@ -30,7 +30,19 @@ public class ExamResult {
     @Column(name = "create_time")
     private LocalDateTime createTime;
 
+    @Column(name = "update_time")
+    private LocalDateTime updateTime;
+
     public ExamResult() {
         this.createTime = LocalDateTime.now();
+        this.updateTime = LocalDateTime.now();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        ExamResult r = (ExamResult) o;
+        return java.util.Objects.equals(score, r.score);
     }
 }

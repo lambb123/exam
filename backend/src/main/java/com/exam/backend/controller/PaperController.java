@@ -57,4 +57,20 @@ public class PaperController {
         }
         return map;
     }
+
+    @DeleteMapping("/{id}")
+    public Map<String, Object> delete(@PathVariable Long id) {
+        Map<String, Object> map = new HashMap<>();
+        try {
+            // 调用 Service 层的删除逻辑 (确保你已经在 PaperService 里加了 delete 方法)
+            paperService.delete(id);
+
+            map.put("code", 200);
+            map.put("msg", "删除成功");
+        } catch (Exception e) {
+            map.put("code", 400);
+            map.put("msg", "删除失败: " + e.getMessage());
+        }
+        return map;
+    }
 }

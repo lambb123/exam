@@ -24,3 +24,11 @@ export const createPaper = (data: any) => {
     data
   })
 }
+
+// 删除试卷
+export function deletePaper(id: number) {
+  return request({
+    url: `/api/paper/${id}`,
+    method: 'delete'
+  })
+}

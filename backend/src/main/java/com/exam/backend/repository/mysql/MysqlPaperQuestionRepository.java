@@ -8,6 +8,11 @@ import java.util.List;
 
 @Repository
 public interface MysqlPaperQuestionRepository extends JpaRepository<PaperQuestion, PaperQuestion.PaperQuestionId> {
+
+
+    void deleteByPaperId(Long paperId);
+
+
     // 查某张卷子的所有题目
     List<PaperQuestion> findByPaperId(Long paperId);
 }

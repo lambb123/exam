@@ -25,11 +25,22 @@ public class PaperService {
     @Autowired
     private MysqlUserRepository userRepository;
 
+    @Autowired
+    private SyncService syncService;
+
     /**
      * 获取所有试卷列表
      */
     public List<Paper> findAll() {
         return paperRepository.findAll();
+    }
+
+
+
+    public void delete(Long id) {
+        // 调用 SyncService 进行三库同时删除
+        // 这样可以避免定时任务因为 "Oracle里还有" 而把 MySQL 里删掉的数据又同步回来
+        syncService.deletePaperGlobally(id);
     }
 
     /**

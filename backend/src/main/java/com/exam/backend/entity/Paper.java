@@ -25,7 +25,22 @@ public class Paper {
     @Column(name = "create_time")
     private LocalDateTime createTime;
 
+    @Column(name = "update_time")
+    private LocalDateTime updateTime;
+
     public Paper() {
         this.createTime = LocalDateTime.now();
+        this.updateTime = LocalDateTime.now();
     }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Paper p = (Paper) o;
+        return java.util.Objects.equals(paperName, p.paperName) &&
+                java.util.Objects.equals(totalScore, p.totalScore);
+    }
+
+
 }
