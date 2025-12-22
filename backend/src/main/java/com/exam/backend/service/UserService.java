@@ -1,20 +1,27 @@
 package com.exam.backend.service;
 
+import com.exam.backend.common.DbSwitchContext;
 import com.exam.backend.entity.User;
 import com.exam.backend.repository.mysql.MysqlUserRepository;
+import com.exam.backend.repository.oracle.OracleUserRepository;
+import com.exam.backend.repository.sqlserver.SqlServerUserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
 @Service
 public class UserService {
 
-    @Autowired
-    private MysqlUserRepository mysqlUserRepository;
+    @Autowired private MysqlUserRepository mysqlUserRepository;
+    @Autowired private OracleUserRepository oracleUserRepository;
+    @Autowired private SqlServerUserRepository sqlServerUserRepository;
 
-    // === 现有方法 ===
+    @Autowired private SyncService syncService; // 注入同步服务
+
+    // === 现有方法 (读操作保持走 MySQL) ===
     public User login(String username, String password) {
         Optional<User> userOpt = mysqlUserRepository.findByUsername(username);
         if (userOpt.isPresent()) {
@@ -26,63 +33,84 @@ public class UserService {
         return null;
     }
 
+    // === 核心改造：注册 (支持主库切换) ===
     public User register(User user) {
+        // 1. 检查唯一性 (读 MySQL 即可)
         if (mysqlUserRepository.findByUsername(user.getUsername()).isPresent()) {
             throw new RuntimeException("用户名已存在");
         }
-        return mysqlUserRepository.save(user);
+
+        // 2. 补全时间
+        if (user.getCreateTime() == null) user.setCreateTime(LocalDateTime.now());
+        user.setUpdateTime(LocalDateTime.now());
+
+        // 3. 路由逻辑
+        return saveUserInternal(user);
     }
 
-    // === 新增管理方法 ===
-
-    /**
-     * 获取所有用户列表
-     */
+    // === 核心改造：获取所有用户 ===
     public List<User> getAllUsers() {
-        // 实际项目中通常会做分页，这里演示方便直接返回所有
         return mysqlUserRepository.findAll();
     }
 
-    /**
-     * 添加用户（后台管理用）
-     */
+    // === 核心改造：添加用户 (后台用) ===
     public User addUser(User user) {
         if (mysqlUserRepository.findByUsername(user.getUsername()).isPresent()) {
             throw new RuntimeException("用户名 " + user.getUsername() + " 已存在");
         }
-        // 如果没有设置默认密码，可以设置一个
         if (user.getPassword() == null || user.getPassword().isEmpty()) {
-            user.setPassword("123456"); // 默认密码
+            user.setPassword("123456");
         }
-        return mysqlUserRepository.save(user);
+        if (user.getCreateTime() == null) user.setCreateTime(LocalDateTime.now());
+        user.setUpdateTime(LocalDateTime.now());
+
+        return saveUserInternal(user);
     }
 
-    /**
-     * 更新用户
-     */
+    // === 核心改造：更新用户 ===
     public User updateUser(User user) {
-        // 检查用户是否存在
         User existing = mysqlUserRepository.findById(user.getId()).orElse(null);
         if (existing == null) {
             throw new RuntimeException("用户不存在");
         }
 
-        // 更新字段 (用户名通常不允许修改，或者需要校验唯一性，这里简单处理只更新其他字段)
         existing.setRealName(user.getRealName());
         existing.setRole(user.getRole());
-
-        // 如果传了密码且不为空，则修改密码
         if (user.getPassword() != null && !user.getPassword().isEmpty()) {
             existing.setPassword(user.getPassword());
         }
+        existing.setUpdateTime(LocalDateTime.now());
 
-        return mysqlUserRepository.save(existing);
+        return saveUserInternal(existing);
     }
 
-    /**
-     * 删除用户
-     */
+    // === 核心改造：删除用户 ===
     public void deleteUser(Long id) {
+        // 简单处理：删除 MySQL，依赖同步机制或下次全量同步处理
+        // 最佳实践是实现 syncService.deleteUserGlobally(id)，此处暂维持原状
         mysqlUserRepository.deleteById(id);
+    }
+
+    // === 内部私有方法：统一处理写入路由 ===
+    private User saveUserInternal(User user) {
+        String currentDb = DbSwitchContext.getCurrentMasterDb();
+        User result = null;
+        System.out.println(">>> [User业务] 正在向主库 [" + currentDb + "] 写入用户: " + user.getUsername());
+
+        switch (currentDb) {
+            case "Oracle":
+                result = oracleUserRepository.save(user);
+                syncService.syncUsersBidirectional(); // 立即同步
+                break;
+            case "SQLServer":
+                result = sqlServerUserRepository.save(user);
+                syncService.syncUsersBidirectional(); // 立即同步
+                break;
+            case "MySQL":
+            default:
+                result = mysqlUserRepository.save(user);
+                break;
+        }
+        return result;
     }
 }

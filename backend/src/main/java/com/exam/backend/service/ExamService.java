@@ -1,140 +1,142 @@
 package com.exam.backend.service;
 
+import com.exam.backend.common.DbSwitchContext;
 import com.exam.backend.controller.dto.ExamSubmitRequest;
 import com.exam.backend.entity.*;
 import com.exam.backend.repository.mysql.*;
+import com.exam.backend.repository.oracle.*;
+import com.exam.backend.repository.sqlserver.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.*;
+import java.util.HashMap;
 
 @Service
 public class ExamService {
 
-    @Autowired
-    private MysqlPaperRepository paperRepository;
+    // === MySQL Repos ===
+    @Autowired private MysqlPaperRepository mysqlPaperRepo;
+    @Autowired private MysqlUserRepository mysqlUserRepo;
+    @Autowired private MysqlExamResultRepository mysqlExamResultRepo;
+    @Autowired private MysqlPaperQuestionRepository mysqlPaperQuestionRepo;
 
-    @Autowired
-    private MysqlUserRepository userRepository;
+    // === Oracle Repos ===
+    @Autowired private OracleExamResultRepository oracleExamResultRepo;
 
-    @Autowired
-    private MysqlExamResultRepository examResultRepository;
+    // === SQL Server Repos ===
+    @Autowired private SqlServerExamResultRepository sqlServerExamResultRepo;
 
-    @Autowired
-    private MysqlPaperQuestionRepository paperQuestionRepository;
+    @Autowired private PaperService paperService;
+    @Autowired private SyncService syncService;
 
-    @Autowired
-    private PaperService paperService;
-
-    // 1. 获取试卷详情
+    // 获取试卷详情 (读 MySQL)
     public Paper getPaperDetail(Long paperId) {
-        return paperRepository.findById(paperId)
+        return mysqlPaperRepo.findById(paperId)
                 .orElseThrow(() -> new RuntimeException("试卷不存在"));
     }
 
-    // 2. 提交并判分
+    // === 核心改造：提交考试 (支持主库切换) ===
     public ExamResult submitExam(ExamSubmitRequest request) {
-        // 获取试卷和学生
-        Paper paper = paperRepository.findById(request.getPaperId()).orElseThrow(() -> new RuntimeException("试卷不存在"));
-        User student = userRepository.findById(request.getStudentId()).orElseThrow(() -> new RuntimeException("学生不存在"));
+        // 1. 准备数据 (读 MySQL)
+        Paper paper = mysqlPaperRepo.findById(request.getPaperId()).orElseThrow(() -> new RuntimeException("试卷不存在"));
+        User student = mysqlUserRepo.findById(request.getStudentId()).orElseThrow(() -> new RuntimeException("学生不存在"));
+        List<PaperQuestion> paperQuestions = mysqlPaperQuestionRepo.findByPaperId(request.getPaperId());
 
-        // 获取这张卷子所有的题目关联信息
-        List<PaperQuestion> paperQuestions = paperQuestionRepository.findByPaperId(request.getPaperId());
-
-        // 初始化分数
+        // 2. 判分逻辑
         BigDecimal totalScore = BigDecimal.ZERO;
-
         Map<Long, String> studentAnswers = request.getAnswers();
 
-        // 遍历试卷里的每一道题
         for (PaperQuestion pq : paperQuestions) {
             Question q = pq.getQuestion();
-            // 获取学生对这道题的答案
             String myAnswer = studentAnswers.get(q.getId());
-
-            // 比对答案（忽略大小写）
             if (myAnswer != null && myAnswer.equalsIgnoreCase(q.getAnswer())) {
-                // 累加分数
                 BigDecimal scoreToAdd = new BigDecimal(pq.getScore());
                 totalScore = totalScore.add(scoreToAdd);
             }
         }
 
-        // 保存成绩对象
+        // 3. 构建结果对象
         ExamResult result = new ExamResult();
         result.setStudent(student);
         result.setPaper(paper);
         result.setScore(totalScore);
+        if (result.getCreateTime() == null) result.setCreateTime(LocalDateTime.now());
+        result.setUpdateTime(LocalDateTime.now());
 
-        // =======================================================
-        // 【核心修复】保存学生的答案详情到数据库
-        // 之前这里漏掉了，导致所有答卷在前端都显示“未作答”
-        // =======================================================
+        // 设置 JSON 答案
         try {
             ObjectMapper mapper = new ObjectMapper();
-            // 将 Map<Long, String> 转换为 JSON 字符串存储
             String jsonAnswers = mapper.writeValueAsString(studentAnswers);
             result.setStudentAnswers(jsonAnswers);
         } catch (Exception e) {
             e.printStackTrace();
-            // 即使序列化失败，也建议不要中断提交，但最好记录日志
-            System.err.println("答案序列化失败: " + e.getMessage());
         }
 
-        return examResultRepository.save(result);
+        // 4. 路由逻辑
+        String currentDb = DbSwitchContext.getCurrentMasterDb();
+        ExamResult savedResult = null;
+        System.out.println(">>> [Exam业务] 正在向主库 [" + currentDb + "] 提交考卷得分: " + totalScore);
+
+        switch (currentDb) {
+            case "Oracle":
+                savedResult = oracleExamResultRepo.save(result);
+                syncService.syncExamResultsBidirectional(); // 立即同步
+                break;
+
+            case "SQLServer":
+                savedResult = sqlServerExamResultRepo.save(result);
+                syncService.syncExamResultsBidirectional(); // 立即同步
+                break;
+
+            case "MySQL":
+            default:
+                savedResult = mysqlExamResultRepo.save(result);
+                break;
+        }
+
+        return savedResult;
     }
 
     // 获取某学生的成绩列表
     public List<ExamResult> getStudentResults(Long studentId) {
-        return examResultRepository.findByStudentId(studentId);
+        return mysqlExamResultRepo.findByStudentId(studentId);
     }
 
     public List<ExamResult> findAllResults() {
-        return examResultRepository.findAll();
+        return mysqlExamResultRepo.findAll();
     }
 
-    /**
-     * 获取考试结果详情（用于查看答卷）
-     */
+    // 获取考试结果详情
     public Map<String, Object> getExamResultDetail(Long resultId) {
-        // 1. 获取考试记录
-        ExamResult result = examResultRepository.findById(resultId)
+        ExamResult result = mysqlExamResultRepo.findById(resultId)
                 .orElseThrow(() -> new RuntimeException("考试记录不存在"));
 
-        // 2. 获取试卷题目详情 (复用 PaperService 的逻辑)
         Map<String, Object> paperDetail = paperService.getPaperDetail(result.getPaper().getId());
         List<Map<String, Object>> questions = (List<Map<String, Object>>) paperDetail.get("questionList");
 
-        // 3. 解析学生的答案 (数据库存的是 JSON 字符串)
         Map<Long, String> studentAnswers = new HashMap<>();
         try {
             ObjectMapper mapper = new ObjectMapper();
             if (result.getStudentAnswers() != null && !result.getStudentAnswers().isEmpty()) {
-                // 兼容处理：尝试读取为 Map<Long, String>
                 studentAnswers = mapper.readValue(result.getStudentAnswers(), new TypeReference<Map<Long, String>>() {});
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
 
-        // 4. 将学生答案合并到题目列表中
         for (Map<String, Object> qItem : questions) {
             Question q = (Question) qItem.get("question");
-
-            // 获取该题学生填的答案 (兼容 Long 和 String 类型的 Key)
             String myAns = studentAnswers.get(q.getId());
             if (myAns == null) {
                 myAns = studentAnswers.getOrDefault(String.valueOf(q.getId()), "");
             }
-
             qItem.put("studentAnswer", myAns);
-
-            // 判断正误
             boolean isCorrect = myAns != null && myAns.equalsIgnoreCase(q.getAnswer());
             qItem.put("isCorrect", isCorrect);
         }
@@ -143,7 +145,6 @@ public class ExamService {
         map.put("examResult", result);
         map.put("paperInfo", paperDetail.get("paperInfo"));
         map.put("questions", questions);
-
         return map;
     }
 }

@@ -1,37 +1,77 @@
 package com.exam.backend.service;
 
+import com.exam.backend.common.DbSwitchContext;
 import com.exam.backend.entity.Question;
 import com.exam.backend.repository.mysql.MysqlQuestionRepository;
+import com.exam.backend.repository.oracle.OracleQuestionRepository;
+import com.exam.backend.repository.sqlserver.SqlServerQuestionRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import com.exam.backend.service.SyncService;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
 public class QuestionService {
 
     @Autowired
-    private MysqlQuestionRepository questionRepository;
+    private MysqlQuestionRepository mysqlQuestionRepository;
 
+    @Autowired
+    private OracleQuestionRepository oracleQuestionRepository;
 
-    //@Autowired
-    //private SyncService syncService; // 注入同步服务
+    @Autowired
+    private SqlServerQuestionRepository sqlServerQuestionRepository;
 
-    // 获取所有试题
+    @Autowired
+    private SyncService syncService; // 注入同步服务
+
+    // 获取所有试题 (默认走 MySQL 读)
     public List<Question> findAll() {
-        return questionRepository.findAll();
+        return mysqlQuestionRepository.findAll();
     }
 
-    // 添加试题
+    // 添加试题 (支持动态切换主写入库)
     public Question add(Question question) {
-        // 这里的保存操作会被 AOP (SyncAspect) 自动捕获并触发同步
-        return questionRepository.save(question);
+        // 1. 设置时间 (修正：只设置 updateTime，不设置 createTime)
+        question.setUpdateTime(LocalDateTime.now());
+
+        // 2. 获取当前系统设置的“主库”
+        String currentDb = DbSwitchContext.getCurrentMasterDb();
+        Question result = null;
+
+        System.out.println(">>> [业务层] 正在向主库 [" + currentDb + "] 写入数据...");
+
+        switch (currentDb) {
+            case "Oracle":
+                // === 模式 A: 写 Oracle -> 同步回 MySQL ===
+                result = oracleQuestionRepository.save(question);
+                // 立即触发同步，把 Oracle 的新数据拉回 MySQL 以便前端显示
+                syncService.syncQuestionsBidirectional();
+                break;
+
+            case "SQLServer":
+                // === 模式 B: 写 SQL Server -> 同步回 MySQL ===
+                result = sqlServerQuestionRepository.save(question);
+                // 立即触发同步
+                syncService.syncQuestionsBidirectional();
+                break;
+
+            case "MySQL":
+            default:
+                // === 模式 C: 写 MySQL (默认) ===
+                // 这种情况下，AOP 切面或定时任务会负责后续同步
+                result = mysqlQuestionRepository.save(question);
+                break;
+        }
+
+        return result;
     }
 
     // 删除试题
     public void delete(Long id) {
-        // 这里的删除操作也会被 AOP 捕获 (前提是切面配置了 delete*)
-        questionRepository.deleteById(id);
+        // 为演示简单，目前只删除 MySQL
+        // 如果需要三库全删，可以调用 syncService.deletePaperGlobally 类似的逻辑
+        mysqlQuestionRepository.deleteById(id);
     }
 }
