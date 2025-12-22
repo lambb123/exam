@@ -70,8 +70,9 @@ public class QuestionService {
 
     // 删除试题
     public void delete(Long id) {
-        // 为演示简单，目前只删除 MySQL
-        // 如果需要三库全删，可以调用 syncService.deletePaperGlobally 类似的逻辑
-        mysqlQuestionRepository.deleteById(id);
+        // 旧代码：mysqlQuestionRepository.deleteById(id);
+
+        // 【修改】调用三库全局删除，防止数据复活
+        syncService.deleteQuestionGlobally(id);
     }
 }

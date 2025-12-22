@@ -196,13 +196,11 @@ public class SyncService {
             // ---------------------------------------------------------
             if (m == null || !m.equals(winner)) {
                 try {
-                    User target = copyUser(winner); // 复制对象，防止修改原引用
-                    // 查重：如果有同名不同ID的，复用已有ID，变Insert为Update
-                    Optional<User> exist = mysqlUserRepo.findByUsername(target.getUsername());
-                    if (exist.isPresent() && !exist.get().getId().equals(target.getId())) {
-                        target.setId(exist.get().getId());
-                    }
-                    mysqlUserRepo.save(target);
+
+
+                    // 【修改后】 使用原生 SQL，强制 ID 一致
+                    self.syncToMysqlNative(winner);
+
                 } catch (Exception e) {
                     System.err.println("MySQL User同步忽略错误: " + e.getMessage());
                 }
@@ -289,7 +287,7 @@ public class SyncService {
             if (winner == null) continue;
 
             if (m == null || !m.equals(winner)) {
-                mysqlQuestionRepo.save(winner);
+                self.syncToMysqlQuestion(winner);
             }
             if (o == null || !o.equals(winner)) {
                 self.syncToOracleQuestion(winner);
@@ -394,7 +392,7 @@ public class SyncService {
             if (winner == null) continue;
 
             if (m == null || !m.equals(winner)) {
-                mysqlExamResultRepo.save(winner);
+                self.syncToMysqlResult(winner);
             }
             if (o == null || !o.equals(winner)) {
                 self.syncToOracleResult(winner);
@@ -676,6 +674,88 @@ public class SyncService {
         });
     }
 
+
+    // =========================================================
+    // [新增] Native Writes (MySQL) - 强制保留 ID
+    // =========================================================
+
+    @Transactional
+    public void syncToMysqlNative(User u) {
+        // MySQL 允许直接插入 ID，无需像 SQL Server 那样 SET IDENTITY_INSERT
+        String updateSql = "UPDATE sys_user SET username=?1, password=?2, role=?3, real_name=?4, create_time=?5, update_time=?6 WHERE id=?7";
+        int rows = oracleEm.createNativeQuery(updateSql) //借用 oracleEm 或 entityManager 都可以执行通用 SQL
+                .setParameter(1, u.getUsername()).setParameter(2, u.getPassword())
+                .setParameter(3, u.getRole()).setParameter(4, u.getRealName())
+                .setParameter(5, u.getCreateTime()).setParameter(6, u.getUpdateTime())
+                .setParameter(7, u.getId()).executeUpdate();
+
+        if (rows == 0) {
+            String insertSql = "INSERT INTO sys_user (id, username, password, role, real_name, create_time, update_time) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)";
+            oracleEm.createNativeQuery(insertSql) // 只要是 JPA EntityManager 都能跑原生 SQL
+                    .setParameter(1, u.getId()).setParameter(2, u.getUsername())
+                    .setParameter(3, u.getPassword()).setParameter(4, u.getRole())
+                    .setParameter(5, u.getRealName()).setParameter(6, u.getCreateTime())
+                    .setParameter(7, u.getUpdateTime()).executeUpdate();
+        }
+    }
+
+    // [新增] 题目的 MySQL 原生同步
+    @Transactional
+    public void syncToMysqlQuestion(Question q) {
+        String update = "UPDATE question SET content=?1, type=?2, difficulty=?3, knowledge_point=?4, answer=?5, update_time=?6 WHERE id=?7";
+        int rows = oracleEm.createNativeQuery(update)
+                .setParameter(1, q.getContent()).setParameter(2, q.getType())
+                .setParameter(3, q.getDifficulty()).setParameter(4, q.getKnowledgePoint())
+                .setParameter(5, q.getAnswer()).setParameter(6, q.getUpdateTime())
+                .setParameter(7, q.getId()).executeUpdate();
+        if (rows == 0) {
+            String insert = "INSERT INTO question (id, content, type, difficulty, knowledge_point, answer, update_time) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)";
+            oracleEm.createNativeQuery(insert)
+                    .setParameter(1, q.getId()).setParameter(2, q.getContent())
+                    .setParameter(3, q.getType()).setParameter(4, q.getDifficulty())
+                    .setParameter(5, q.getKnowledgePoint()).setParameter(6, q.getAnswer())
+                    .setParameter(7, q.getUpdateTime()).executeUpdate();
+        }
+    }
+
+    // [新增] 试卷的 MySQL 原生同步
+    @Transactional
+    public void syncToMysqlPaper(Paper p) {
+        String update = "UPDATE paper SET paper_name=?1, total_score=?2, teacher_id=?3, create_time=?4, update_time=?5 WHERE id=?6";
+        int rows = oracleEm.createNativeQuery(update)
+                .setParameter(1, p.getPaperName()).setParameter(2, p.getTotalScore())
+                .setParameter(3, p.getTeacher() != null ? p.getTeacher().getId() : null)
+                .setParameter(4, p.getCreateTime()).setParameter(5, p.getUpdateTime())
+                .setParameter(6, p.getId()).executeUpdate();
+        if (rows == 0) {
+            String insert = "INSERT INTO paper (id, paper_name, total_score, teacher_id, create_time, update_time) VALUES (?1, ?2, ?3, ?4, ?5, ?6)";
+            oracleEm.createNativeQuery(insert)
+                    .setParameter(1, p.getId()).setParameter(2, p.getPaperName())
+                    .setParameter(3, p.getTotalScore())
+                    .setParameter(4, p.getTeacher() != null ? p.getTeacher().getId() : null)
+                    .setParameter(5, p.getCreateTime()).setParameter(6, p.getUpdateTime()).executeUpdate();
+        }
+    }
+
+    // [新增] 成绩的 MySQL 原生同步
+    @Transactional
+    public void syncToMysqlResult(ExamResult r) {
+        Long sid = r.getStudent() != null ? r.getStudent().getId() : null;
+        Long pid = r.getPaper() != null ? r.getPaper().getId() : null;
+        String update = "UPDATE exam_result SET student_id=?1, paper_id=?2, score=?3, exam_time=?4, update_time=?5 WHERE id=?6";
+        int rows = oracleEm.createNativeQuery(update)
+                .setParameter(1, sid).setParameter(2, pid).setParameter(3, r.getScore())
+                .setParameter(4, r.getCreateTime()).setParameter(5, r.getUpdateTime())
+                .setParameter(6, r.getId()).executeUpdate();
+        if (rows == 0) {
+            String insert = "INSERT INTO exam_result (id, student_id, paper_id, score, exam_time, update_time) VALUES (?1, ?2, ?3, ?4, ?5, ?6)";
+            oracleEm.createNativeQuery(insert)
+                    .setParameter(1, r.getId()).setParameter(2, sid).setParameter(3, pid)
+                    .setParameter(4, r.getScore()).setParameter(5, r.getCreateTime())
+                    .setParameter(6, r.getUpdateTime()).executeUpdate();
+        }
+    }
+
     // =========================================================
     // 10. MySQL 辅助: 同步 PaperQuestion
     // =========================================================
@@ -865,6 +945,67 @@ public class SyncService {
                 }
             } catch (Exception e) {
                 throw new RuntimeException("SQL Server 删除用户失败: " + e.getMessage());
+            }
+        });
+    }
+
+    // =========================================================
+    // 15. [新增] 全局删除试题 (同时清理 MySQL, Oracle, SQL Server)
+    // =========================================================
+    @Transactional
+    public void deleteQuestionGlobally(Long questionId) {
+        System.out.println(">>> [全局删除] 正在删除试题 ID: " + questionId);
+
+        // --- 1. MySQL 删除 ---
+        // 1.1 先删关联的组卷记录 (paper_question)
+        // 注意：MysqlPaperQuestionRepository 可能没有 deleteByQuestionId，
+        // 我们先查出来再删，或者你可以去 Repository 加一个方法。这里用通用查删法：
+        List<PaperQuestion> pqs = mysqlPaperQuestionRepo.findAll().stream()
+                .filter(pq -> pq.getQuestion().getId().equals(questionId))
+                .collect(Collectors.toList());
+        if (!pqs.isEmpty()) {
+            mysqlPaperQuestionRepo.deleteAll(pqs);
+        }
+
+        // 1.2 删题目本体
+        if (mysqlQuestionRepo.existsById(questionId)) {
+            mysqlQuestionRepo.deleteById(questionId);
+        }
+
+        // --- 2. Oracle 删除 ---
+        self.deleteQuestionOracle(questionId);
+
+        // --- 3. SQL Server 删除 ---
+        self.deleteQuestionSqlServer(questionId);
+    }
+
+    // [新增] Oracle 专用删除试题事务
+    @Transactional(transactionManager = "transactionManagerOracle")
+    public void deleteQuestionOracle(Long questionId) {
+        // 1. 删关联
+        oracleEm.createNativeQuery("DELETE FROM paper_question WHERE question_id = ?1").setParameter(1, questionId).executeUpdate();
+        // 2. 删本体
+        oracleEm.createNativeQuery("DELETE FROM question WHERE id = ?1").setParameter(1, questionId).executeUpdate();
+    }
+
+    // [新增] SQL Server 专用删除试题事务
+    @Transactional(transactionManager = "transactionManagerSqlServer")
+    public void deleteQuestionSqlServer(Long questionId) {
+        org.hibernate.Session session = sqlServerEm.unwrap(org.hibernate.Session.class);
+        session.doWork(connection -> {
+            try (java.sql.Statement stmt = connection.createStatement()) {
+                // 1. 删关联
+                try (java.sql.PreparedStatement ps = connection.prepareStatement("DELETE FROM dbo.paper_question WHERE question_id = ?")) {
+                    ps.setLong(1, questionId);
+                    ps.executeUpdate();
+                }
+                // 2. 删本体
+                try (java.sql.PreparedStatement ps = connection.prepareStatement("DELETE FROM dbo.question WHERE id = ?")) {
+                    ps.setLong(1, questionId);
+                    ps.executeUpdate();
+                }
+            } catch (Exception e) {
+                throw new RuntimeException("SQL Server 删除试题失败: " + e.getMessage());
             }
         });
     }
