@@ -139,6 +139,7 @@ public class PaperService {
                     pq.setScore(scorePerQuestion);
                     mysqlPaperQuestionRepo.save(pq);
                 }
+                syncService.syncPapersBidirectional();
                 break;
         }
     }

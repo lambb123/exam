@@ -19,7 +19,10 @@ public class UserService {
     @Autowired private OracleUserRepository oracleUserRepository;
     @Autowired private SqlServerUserRepository sqlServerUserRepository;
 
+
     @Autowired private SyncService syncService;
+
+
 
     // === 登录 (读操作保持走 MySQL) ===
     public User login(String username, String password) {
@@ -137,8 +140,6 @@ public class UserService {
             case "MySQL":
             default:
                 result = mysqlUserRepository.save(user);
-                // 记得这里也要加同步，防止"闪烁"报错
-                syncService.syncToMysqlNative(result); // 或者 syncUsersBidirectional
                 syncService.syncUsersBidirectional();
                 break;
         }

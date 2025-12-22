@@ -97,6 +97,7 @@ public class ExamService {
             case "MySQL":
             default:
                 savedResult = mysqlExamResultRepo.save(result);
+                syncService.syncExamResultsBidirectional();
                 break;
         }
 

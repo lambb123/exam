@@ -63,6 +63,9 @@ public class SyncService {
     @PersistenceContext(unitName = "sqlServerPersistenceUnit")
     private EntityManager sqlServerEm;
 
+    @PersistenceContext // 默认注入主数据源 (MySQL) 的 EntityManager
+    private EntityManager mysqlEm;
+
 
     // =========================================================
     // 1. [入口] 定时检查 (兜底机制) - 每 30 秒执行
@@ -112,7 +115,8 @@ public class SyncService {
     // =========================================================
     // 2. [入口] 实时同步 (AOP 调用)
     // =========================================================
-    @Async
+    // 去掉 @Async，改为同步执行，防止前端操作完立即查询时数据还未同步
+    // @Async
     public void executeImmediateSync() {
         System.out.println(">>> [实时同步] 响应业务操作，立即执行增量同步...");
         try {
@@ -128,7 +132,7 @@ public class SyncService {
     }
 
     // 兼容旧代码调用
-    @Async
+    // @Async
     public void syncData() {
         // 直接复用新的实时同步逻辑
         this.executeImmediateSync();
@@ -196,11 +200,8 @@ public class SyncService {
             // ---------------------------------------------------------
             if (m == null || !m.equals(winner)) {
                 try {
-
-
                     // 【修改后】 使用原生 SQL，强制 ID 一致
                     self.syncToMysqlNative(winner);
-
                 } catch (Exception e) {
                     System.err.println("MySQL User同步忽略错误: " + e.getMessage());
                 }
@@ -328,8 +329,9 @@ public class SyncService {
             List<PaperQuestion> winnerPQs = fetchPaperQuestions(winner, m, o, s);
 
             if (m == null || !m.equals(winner)) {
-                mysqlPaperRepo.save(winner);
-                syncPaperQuestionsToMysql(winner, winnerPQs);
+                // ✅ 使用原生 SQL 同步 Paper 和 PaperQuestions
+                self.syncToMysqlPaper(winner);
+                self.syncToMysqlPaperQuestions(winner, winnerPQs);
             }
             if (o == null || !o.equals(winner)) {
                 self.syncToOraclePaper(winner);
@@ -676,14 +678,14 @@ public class SyncService {
 
 
     // =========================================================
-    // [新增] Native Writes (MySQL) - 强制保留 ID
+    // [修正] Native Writes (MySQL) - 使用 mysqlEm
     // =========================================================
 
     @Transactional
     public void syncToMysqlNative(User u) {
-        // MySQL 允许直接插入 ID，无需像 SQL Server 那样 SET IDENTITY_INSERT
         String updateSql = "UPDATE sys_user SET username=?1, password=?2, role=?3, real_name=?4, create_time=?5, update_time=?6 WHERE id=?7";
-        int rows = oracleEm.createNativeQuery(updateSql) //借用 oracleEm 或 entityManager 都可以执行通用 SQL
+        // ✅ 修正：使用 mysqlEm
+        int rows = mysqlEm.createNativeQuery(updateSql)
                 .setParameter(1, u.getUsername()).setParameter(2, u.getPassword())
                 .setParameter(3, u.getRole()).setParameter(4, u.getRealName())
                 .setParameter(5, u.getCreateTime()).setParameter(6, u.getUpdateTime())
@@ -691,7 +693,8 @@ public class SyncService {
 
         if (rows == 0) {
             String insertSql = "INSERT INTO sys_user (id, username, password, role, real_name, create_time, update_time) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)";
-            oracleEm.createNativeQuery(insertSql) // 只要是 JPA EntityManager 都能跑原生 SQL
+            // ✅ 修正：使用 mysqlEm
+            mysqlEm.createNativeQuery(insertSql)
                     .setParameter(1, u.getId()).setParameter(2, u.getUsername())
                     .setParameter(3, u.getPassword()).setParameter(4, u.getRole())
                     .setParameter(5, u.getRealName()).setParameter(6, u.getCreateTime())
@@ -699,18 +702,19 @@ public class SyncService {
         }
     }
 
-    // [新增] 题目的 MySQL 原生同步
     @Transactional
     public void syncToMysqlQuestion(Question q) {
         String update = "UPDATE question SET content=?1, type=?2, difficulty=?3, knowledge_point=?4, answer=?5, update_time=?6 WHERE id=?7";
-        int rows = oracleEm.createNativeQuery(update)
+        // ✅ 修正：使用 mysqlEm
+        int rows = mysqlEm.createNativeQuery(update)
                 .setParameter(1, q.getContent()).setParameter(2, q.getType())
                 .setParameter(3, q.getDifficulty()).setParameter(4, q.getKnowledgePoint())
                 .setParameter(5, q.getAnswer()).setParameter(6, q.getUpdateTime())
                 .setParameter(7, q.getId()).executeUpdate();
         if (rows == 0) {
             String insert = "INSERT INTO question (id, content, type, difficulty, knowledge_point, answer, update_time) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)";
-            oracleEm.createNativeQuery(insert)
+            // ✅ 修正：使用 mysqlEm
+            mysqlEm.createNativeQuery(insert)
                     .setParameter(1, q.getId()).setParameter(2, q.getContent())
                     .setParameter(3, q.getType()).setParameter(4, q.getDifficulty())
                     .setParameter(5, q.getKnowledgePoint()).setParameter(6, q.getAnswer())
@@ -718,18 +722,19 @@ public class SyncService {
         }
     }
 
-    // [新增] 试卷的 MySQL 原生同步
     @Transactional
     public void syncToMysqlPaper(Paper p) {
         String update = "UPDATE paper SET paper_name=?1, total_score=?2, teacher_id=?3, create_time=?4, update_time=?5 WHERE id=?6";
-        int rows = oracleEm.createNativeQuery(update)
+        // ✅ 修正：使用 mysqlEm
+        int rows = mysqlEm.createNativeQuery(update)
                 .setParameter(1, p.getPaperName()).setParameter(2, p.getTotalScore())
                 .setParameter(3, p.getTeacher() != null ? p.getTeacher().getId() : null)
                 .setParameter(4, p.getCreateTime()).setParameter(5, p.getUpdateTime())
                 .setParameter(6, p.getId()).executeUpdate();
         if (rows == 0) {
             String insert = "INSERT INTO paper (id, paper_name, total_score, teacher_id, create_time, update_time) VALUES (?1, ?2, ?3, ?4, ?5, ?6)";
-            oracleEm.createNativeQuery(insert)
+            // ✅ 修正：使用 mysqlEm
+            mysqlEm.createNativeQuery(insert)
                     .setParameter(1, p.getId()).setParameter(2, p.getPaperName())
                     .setParameter(3, p.getTotalScore())
                     .setParameter(4, p.getTeacher() != null ? p.getTeacher().getId() : null)
@@ -737,42 +742,42 @@ public class SyncService {
         }
     }
 
-    // [新增] 成绩的 MySQL 原生同步
+    // =========================================================
+    // 【新增】PaperQuestion 的 MySQL 原生同步 (解决报错的核心)
+    // =========================================================
+    @Transactional
+    public void syncToMysqlPaperQuestions(Paper p, List<PaperQuestion> pqs) {
+        // 1. 先删 (使用 mysqlEm)
+        mysqlEm.createNativeQuery("DELETE FROM paper_question WHERE paper_id = ?1")
+                .setParameter(1, p.getId()).executeUpdate();
+
+        // 2. 后插 (使用 mysqlEm)
+        for (PaperQuestion pq : pqs) {
+            mysqlEm.createNativeQuery("INSERT INTO paper_question (paper_id, question_id, score) VALUES (?1, ?2, ?3)")
+                    .setParameter(1, p.getId())
+                    .setParameter(2, pq.getQuestion().getId())
+                    .setParameter(3, pq.getScore()).executeUpdate();
+        }
+    }
+
     @Transactional
     public void syncToMysqlResult(ExamResult r) {
         Long sid = r.getStudent() != null ? r.getStudent().getId() : null;
         Long pid = r.getPaper() != null ? r.getPaper().getId() : null;
         String update = "UPDATE exam_result SET student_id=?1, paper_id=?2, score=?3, exam_time=?4, update_time=?5 WHERE id=?6";
-        int rows = oracleEm.createNativeQuery(update)
+        // ✅ 修正：使用 mysqlEm
+        int rows = mysqlEm.createNativeQuery(update)
                 .setParameter(1, sid).setParameter(2, pid).setParameter(3, r.getScore())
                 .setParameter(4, r.getCreateTime()).setParameter(5, r.getUpdateTime())
                 .setParameter(6, r.getId()).executeUpdate();
         if (rows == 0) {
             String insert = "INSERT INTO exam_result (id, student_id, paper_id, score, exam_time, update_time) VALUES (?1, ?2, ?3, ?4, ?5, ?6)";
-            oracleEm.createNativeQuery(insert)
+            // ✅ 修正：使用 mysqlEm
+            mysqlEm.createNativeQuery(insert)
                     .setParameter(1, r.getId()).setParameter(2, sid).setParameter(3, pid)
                     .setParameter(4, r.getScore()).setParameter(5, r.getCreateTime())
                     .setParameter(6, r.getUpdateTime()).executeUpdate();
         }
-    }
-
-    // =========================================================
-    // 10. MySQL 辅助: 同步 PaperQuestion
-    // =========================================================
-    private void syncPaperQuestionsToMysql(Paper p, List<PaperQuestion> pqs) {
-        // 先删除旧的
-        mysqlPaperQuestionRepo.deleteByPaperId(p.getId());
-
-        // 重新构建并保存 (必须新建对象或detach，防止主键冲突或JPA缓存问题)
-        List<PaperQuestion> newPqs = new ArrayList<>();
-        for (PaperQuestion sourcePq : pqs) {
-            PaperQuestion newPq = new PaperQuestion();
-            newPq.setPaper(p); // 关联到 MySQL 的 Paper 实体
-            newPq.setQuestion(sourcePq.getQuestion()); // 假设 Question ID 一致
-            newPq.setScore(sourcePq.getScore());
-            newPqs.add(newPq);
-        }
-        mysqlPaperQuestionRepo.saveAll(newPqs);
     }
 
     // =========================================================
@@ -893,11 +898,7 @@ public class SyncService {
 
         // --- 1. MySQL 删除 (JPA) ---
         // 1.1 删成绩 (如果是学生，先删成绩防止外键冲突)
-        mysqlExamResultRepo.deleteByStudentId(userId); // 需要确认 Repo 有这个方法，如果没有，看下面注释
-        // 1.2 删试卷 (如果是老师，建议把试卷的 teacher_id 置空，或者直接删除试卷。这里为了彻底清理，选择删除关联试卷)
-        // 注意：删试卷比较麻烦，因为试卷还有题目关联。
-        // 简单策略：先只删用户，如果数据库有级联删除(Cascade)最好；如果没有，这里只演示删用户。
-        // 如果碰到外键报错，需要先手动清理 paper 表。这里假设只清理成绩。
+        mysqlExamResultRepo.deleteByStudentId(userId);
 
         // 1.3 删用户本体
         if (mysqlUserRepo.existsById(userId)) {
@@ -958,8 +959,6 @@ public class SyncService {
 
         // --- 1. MySQL 删除 ---
         // 1.1 先删关联的组卷记录 (paper_question)
-        // 注意：MysqlPaperQuestionRepository 可能没有 deleteByQuestionId，
-        // 我们先查出来再删，或者你可以去 Repository 加一个方法。这里用通用查删法：
         List<PaperQuestion> pqs = mysqlPaperQuestionRepo.findAll().stream()
                 .filter(pq -> pq.getQuestion().getId().equals(questionId))
                 .collect(Collectors.toList());

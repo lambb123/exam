@@ -62,6 +62,7 @@ public class QuestionService {
                 // === 模式 C: 写 MySQL (默认) ===
                 // 这种情况下，AOP 切面或定时任务会负责后续同步
                 result = mysqlQuestionRepository.save(question);
+                syncService.syncQuestionsBidirectional();
                 break;
         }
 
