@@ -86,9 +86,10 @@ public class UserService {
 
     // === 核心改造：删除用户 ===
     public void deleteUser(Long id) {
-        // 简单处理：删除 MySQL，依赖同步机制或下次全量同步处理
-        // 最佳实践是实现 syncService.deleteUserGlobally(id)，此处暂维持原状
-        mysqlUserRepository.deleteById(id);
+        // 旧代码：mysqlUserRepository.deleteById(id);
+
+        // 新代码：调用三库同时删除
+        syncService.deleteUserGlobally(id);
     }
 
     // === 内部私有方法：统一处理写入路由 ===
@@ -113,4 +114,6 @@ public class UserService {
         }
         return result;
     }
+
+
 }

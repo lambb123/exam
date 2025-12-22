@@ -13,6 +13,7 @@ import java.util.Map;
 public interface MysqlExamResultRepository extends JpaRepository<ExamResult, Long> {
     // 查某个学生的所有成绩
     List<ExamResult> findByStudentId(Long studentId);
+    void deleteByStudentId(Long studentId);
 
     // 复杂 SQL 示例：
     // 查询每张试卷的 平均分、最高分，并关联查出出卷老师的名字

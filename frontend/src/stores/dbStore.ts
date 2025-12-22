@@ -29,8 +29,7 @@ export const useDbStore = defineStore('db', () => {
       }
     } catch (e) {
       ElMessage.error('切换失败')
-      // 如果失败，回滚状态
-      fetchDbMode()
+      fetchDbMode() // 失败回滚
     }
   }
 

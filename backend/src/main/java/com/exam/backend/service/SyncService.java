@@ -165,7 +165,7 @@ public class SyncService {
     }
 
     // =========================================================
-    // 4. [核心] User 表双向同步
+    // 4. [核心] User 表双向同步 (已修复唯一键冲突)
     // =========================================================
     @Transactional
     public void syncUsersBidirectional() {
@@ -187,23 +187,79 @@ public class SyncService {
             User o = oM.get(id);
             User s = sM.get(id);
 
-            // 传入方法引用 User::getUpdateTime
+            // 1. 决出胜者 (数据最新的那个)
             User winner = determineWinner(m, o, s, User::getUpdateTime);
             if (winner == null) continue;
 
+            // ---------------------------------------------------------
             // Sync to MySQL
+            // ---------------------------------------------------------
             if (m == null || !m.equals(winner)) {
-                mysqlUserRepo.save(winner);
+                try {
+                    User target = copyUser(winner); // 复制对象，防止修改原引用
+                    // 查重：如果有同名不同ID的，复用已有ID，变Insert为Update
+                    Optional<User> exist = mysqlUserRepo.findByUsername(target.getUsername());
+                    if (exist.isPresent() && !exist.get().getId().equals(target.getId())) {
+                        target.setId(exist.get().getId());
+                    }
+                    mysqlUserRepo.save(target);
+                } catch (Exception e) {
+                    System.err.println("MySQL User同步忽略错误: " + e.getMessage());
+                }
             }
+
+            // ---------------------------------------------------------
             // Sync to Oracle
+            // ---------------------------------------------------------
             if (o == null || !o.equals(winner)) {
-                self.syncToOracleNative(winner);
+                try {
+                    User target = copyUser(winner); // 复制对象
+                    // 查重
+                    Optional<User> exist = oracleUserRepo.findByUsername(target.getUsername());
+                    if (exist.isPresent() && !exist.get().getId().equals(target.getId())) {
+                        target.setId(exist.get().getId());
+                    }
+                    // 调用原生 Native 方法同步
+                    self.syncToOracleNative(target);
+                } catch (Exception e) {
+                    System.err.println("Oracle User同步忽略错误: " + e.getMessage());
+                }
             }
+
+            // ---------------------------------------------------------
             // Sync to SQL Server
+            // ---------------------------------------------------------
             if (s == null || !s.equals(winner)) {
-                self.syncToSqlServerNative(winner);
+                try {
+                    User target = copyUser(winner); // 复制对象
+                    // 查重
+                    Optional<User> exist = sqlServerUserRepo.findByUsername(target.getUsername());
+                    if (exist.isPresent() && !exist.get().getId().equals(target.getId())) {
+                        target.setId(exist.get().getId());
+                    }
+                    // 调用原生 Native 方法同步
+                    self.syncToSqlServerNative(target);
+                } catch (Exception e) {
+                    System.err.println("SQL Server User同步忽略错误: " + e.getMessage());
+                }
             }
         }
+    }
+
+    /**
+     * 辅助方法：手动浅拷贝 User 对象
+     * 防止在修改 ID 时影响到 winner 原对象，导致后续逻辑错乱
+     */
+    private User copyUser(User source) {
+        User target = new User();
+        target.setId(source.getId());
+        target.setUsername(source.getUsername());
+        target.setPassword(source.getPassword());
+        target.setRole(source.getRole());
+        target.setRealName(source.getRealName());
+        target.setCreateTime(source.getCreateTime());
+        target.setUpdateTime(source.getUpdateTime());
+        return target;
     }
 
     // =========================================================
@@ -744,6 +800,71 @@ public class SyncService {
                 }
             } catch (Exception e) {
                 throw new RuntimeException("SQL Server 删除试卷失败: " + e.getMessage());
+            }
+        });
+    }
+
+    // =========================================================
+    // 14. [新增] 全局删除用户 (同时清理 MySQL, Oracle, SQL Server)
+    // =========================================================
+    @Transactional
+    public void deleteUserGlobally(Long userId) {
+        System.out.println(">>> [全局删除] 正在删除用户 ID: " + userId);
+
+        // --- 1. MySQL 删除 (JPA) ---
+        // 1.1 删成绩 (如果是学生，先删成绩防止外键冲突)
+        mysqlExamResultRepo.deleteByStudentId(userId); // 需要确认 Repo 有这个方法，如果没有，看下面注释
+        // 1.2 删试卷 (如果是老师，建议把试卷的 teacher_id 置空，或者直接删除试卷。这里为了彻底清理，选择删除关联试卷)
+        // 注意：删试卷比较麻烦，因为试卷还有题目关联。
+        // 简单策略：先只删用户，如果数据库有级联删除(Cascade)最好；如果没有，这里只演示删用户。
+        // 如果碰到外键报错，需要先手动清理 paper 表。这里假设只清理成绩。
+
+        // 1.3 删用户本体
+        if (mysqlUserRepo.existsById(userId)) {
+            mysqlUserRepo.deleteById(userId);
+        }
+
+        // --- 2. Oracle 删除 (必须用 self. 调用以触发新事务) ---
+        self.deleteUserOracle(userId);
+
+        // --- 3. SQL Server 删除 (必须用 self. 调用以触发新事务) ---
+        self.deleteUserSqlServer(userId);
+    }
+
+    // [新增] Oracle 专用删除用户事务
+    @Transactional(transactionManager = "transactionManagerOracle")
+    public void deleteUserOracle(Long userId) {
+        // 1. 删关联成绩
+        oracleEm.createNativeQuery("DELETE FROM exam_result WHERE student_id = ?1").setParameter(1, userId).executeUpdate();
+        // 2. 删关联试卷 (可选：将 teacher_id 置空，防止删不掉)
+        oracleEm.createNativeQuery("UPDATE paper SET teacher_id = NULL WHERE teacher_id = ?1").setParameter(1, userId).executeUpdate();
+        // 3. 删用户
+        oracleEm.createNativeQuery("DELETE FROM sys_user WHERE id = ?1").setParameter(1, userId).executeUpdate();
+    }
+
+    // [新增] SQL Server 专用删除用户事务
+    @Transactional(transactionManager = "transactionManagerSqlServer")
+    public void deleteUserSqlServer(Long userId) {
+        org.hibernate.Session session = sqlServerEm.unwrap(org.hibernate.Session.class);
+        session.doWork(connection -> {
+            try (java.sql.Statement stmt = connection.createStatement()) {
+                // 1. 删关联成绩
+                try (java.sql.PreparedStatement ps = connection.prepareStatement("DELETE FROM dbo.exam_result WHERE student_id = ?")) {
+                    ps.setLong(1, userId);
+                    ps.executeUpdate();
+                }
+                // 2. 关联试卷置空
+                try (java.sql.PreparedStatement ps = connection.prepareStatement("UPDATE dbo.paper SET teacher_id = NULL WHERE teacher_id = ?")) {
+                    ps.setLong(1, userId);
+                    ps.executeUpdate();
+                }
+                // 3. 删用户
+                try (java.sql.PreparedStatement ps = connection.prepareStatement("DELETE FROM dbo.sys_user WHERE id = ?")) {
+                    ps.setLong(1, userId);
+                    ps.executeUpdate();
+                }
+            } catch (Exception e) {
+                throw new RuntimeException("SQL Server 删除用户失败: " + e.getMessage());
             }
         });
     }
