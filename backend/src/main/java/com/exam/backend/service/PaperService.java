@@ -8,7 +8,6 @@ import com.exam.backend.repository.oracle.*;
 import com.exam.backend.repository.sqlserver.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional; // 注意：手动控制多库写入时，尽量避免单一的 Spring 事务注解
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -26,10 +25,14 @@ public class PaperService {
     // === Oracle Repos ===
     @Autowired private OraclePaperRepository oraclePaperRepo;
     @Autowired private OraclePaperQuestionRepository oraclePaperQuestionRepo;
+    @Autowired private OracleQuestionRepository oracleQuestionRepo;
+    @Autowired private OracleUserRepository oracleUserRepo;
 
     // === SQL Server Repos ===
     @Autowired private SqlServerPaperRepository sqlServerPaperRepo;
     @Autowired private SqlServerPaperQuestionRepository sqlServerPaperQuestionRepo;
+    @Autowired private SqlServerQuestionRepository sqlServerQuestionRepo;
+    @Autowired private SqlServerUserRepository sqlServerUserRepo;
 
     @Autowired private SyncService syncService;
 
@@ -38,7 +41,6 @@ public class PaperService {
     }
 
     public void delete(Long id) {
-        // 调用 SyncService 全局删除
         syncService.deletePaperGlobally(id);
     }
 
@@ -63,33 +65,42 @@ public class PaperService {
     }
 
     /**
-     * 智能组卷核心逻辑 (支持动态主库切换)
+     * 智能组卷核心逻辑
      */
     public void createPaper(PaperCreateRequest request) {
-        // 1. 准备数据 (读 MySQL)
-        User teacher = mysqlUserRepo.findById(request.getTeacherId())
-                .orElseThrow(() -> new RuntimeException("教师不存在"));
+        // 1. 获取当前主库
+        String currentDb = DbSwitchContext.getCurrentMasterDb();
+        System.out.println(">>> [Paper业务] 正在向主库 [" + currentDb + "] 创建试卷...");
 
+        // 2. 动态获取教师信息
+        User teacher = getTeacherFromCurrentDb(currentDb, request.getTeacherId());
+
+        // 3. 动态抽取题目
+        // 【修复】关键点：这里必须用 "单选" 而不是 "单选题"，因为数据库存的是两个字！
         List<Question> finalQuestions = new ArrayList<>();
         if (request.getSingleCount() != null && request.getSingleCount() > 0)
-            finalQuestions.addAll(getRandomQuestions("单选题", request.getSingleCount()));
+            finalQuestions.addAll(getRandomQuestions(currentDb, "单选", request.getSingleCount()));
+
         if (request.getMultiCount() != null && request.getMultiCount() > 0)
-            finalQuestions.addAll(getRandomQuestions("多选题", request.getMultiCount()));
+            finalQuestions.addAll(getRandomQuestions(currentDb, "多选", request.getMultiCount()));
+
         if (request.getJudgeCount() != null && request.getJudgeCount() > 0)
-            finalQuestions.addAll(getRandomQuestions("判断题", request.getJudgeCount()));
+            finalQuestions.addAll(getRandomQuestions(currentDb, "判断", request.getJudgeCount()));
+
         if (request.getFillCount() != null && request.getFillCount() > 0)
-            finalQuestions.addAll(getRandomQuestions("填空题", request.getFillCount()));
+            finalQuestions.addAll(getRandomQuestions(currentDb, "填空", request.getFillCount()));
+
         if (request.getEssayCount() != null && request.getEssayCount() > 0)
-            finalQuestions.addAll(getRandomQuestions("简答题", request.getEssayCount()));
+            finalQuestions.addAll(getRandomQuestions(currentDb, "简答", request.getEssayCount()));
 
         if (finalQuestions.isEmpty()) {
-            throw new RuntimeException("未选择任何题目！");
+            throw new RuntimeException("【" + currentDb + "】库中未找到符合条件的题目，请检查题库或减少抽题数量！");
         }
 
         int scorePerQuestion = 10;
         int totalScore = finalQuestions.size() * scorePerQuestion;
 
-        // 2. 构建试卷对象
+        // 4. 构建试卷对象
         Paper paper = new Paper();
         paper.setPaperName(request.getPaperName());
         paper.setTeacher(teacher);
@@ -97,15 +108,10 @@ public class PaperService {
         if (paper.getCreateTime() == null) paper.setCreateTime(LocalDateTime.now());
         paper.setUpdateTime(LocalDateTime.now());
 
-        // 3. 路由逻辑
-        String currentDb = DbSwitchContext.getCurrentMasterDb();
-        System.out.println(">>> [Paper业务] 正在向主库 [" + currentDb + "] 创建试卷...");
-
+        // 5. 路由写入逻辑
         switch (currentDb) {
             case "Oracle":
-                // Save Paper
                 paper = oraclePaperRepo.save(paper);
-                // Save PaperQuestions
                 for (Question q : finalQuestions) {
                     PaperQuestion pq = new PaperQuestion();
                     pq.setPaper(paper);
@@ -113,7 +119,6 @@ public class PaperService {
                     pq.setScore(scorePerQuestion);
                     oraclePaperQuestionRepo.save(pq);
                 }
-                // Sync
                 syncService.syncPapersBidirectional();
                 break;
 
@@ -144,14 +149,35 @@ public class PaperService {
         }
     }
 
-    private List<Question> getRandomQuestions(String type, int count) {
-        // 注意：这里需要去 MysqlQuestionRepository 接口里确认有 findByType 方法
-        List<Question> all = mysqlQuestionRepo.findByType(type);
-        if (all.size() < count) {
-            // 简单处理，如果不够就全拿
-            // throw new RuntimeException("题库不足...");
-            // 演示时为了不报错，可以宽容处理
+    private User getTeacherFromCurrentDb(String currentDb, Long teacherId) {
+        Optional<User> userOpt;
+        switch (currentDb) {
+            case "Oracle": userOpt = oracleUserRepo.findById(teacherId); break;
+            case "SQLServer": userOpt = sqlServerUserRepo.findById(teacherId); break;
+            case "MySQL": default: userOpt = mysqlUserRepo.findById(teacherId); break;
         }
+        return userOpt.orElseThrow(() -> new RuntimeException("在 [" + currentDb + "] 中未找到 ID=" + teacherId + " 的教师信息"));
+    }
+
+    private List<Question> getRandomQuestions(String currentDb, String type, int count) {
+        List<Question> all = new ArrayList<>();
+
+        if ("Oracle".equals(currentDb)) {
+            all = oracleQuestionRepo.findAll().stream()
+                    .filter(q -> type.equals(q.getType()))
+                    .collect(Collectors.toList());
+        } else if ("SQLServer".equals(currentDb)) {
+            all = sqlServerQuestionRepo.findAll().stream()
+                    .filter(q -> type.equals(q.getType()))
+                    .collect(Collectors.toList());
+        } else {
+            all = mysqlQuestionRepo.findByType(type);
+        }
+
+        if (all.size() < count) {
+            System.out.println(">>> 警告: [" + currentDb + "] " + type + " 题库不足，请求 " + count + " 实际 " + all.size());
+        }
+
         Collections.shuffle(all);
         return all.stream().limit(count).collect(Collectors.toList());
     }
