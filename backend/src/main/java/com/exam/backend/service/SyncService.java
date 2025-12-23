@@ -425,11 +425,24 @@ public class SyncService {
     public void syncToOracleResult(ExamResult r) {
         Long sid = r.getStudent() != null ? r.getStudent().getId() : null;
         Long pid = r.getPaper() != null ? r.getPaper().getId() : null;
+
+        // 【修复】增加了 student_answers=?6
         String update = "UPDATE exam_result SET student_id=?1, paper_id=?2, score=?3, exam_time=?4, update_time=?5, student_answers=?6 WHERE id=?7";
-        int rows = oracleEm.createNativeQuery(update).setParameter(1, sid).setParameter(2, pid).setParameter(3, r.getScore()).setParameter(4, r.getCreateTime()).setParameter(5, r.getUpdateTime()).setParameter(6, r.getStudentAnswers()).setParameter(7, r.getId()).executeUpdate();
+        int rows = oracleEm.createNativeQuery(update)
+                .setParameter(1, sid).setParameter(2, pid).setParameter(3, r.getScore())
+                .setParameter(4, r.getCreateTime()).setParameter(5, r.getUpdateTime())
+                .setParameter(6, r.getStudentAnswers()) // 设置答题JSON
+                .setParameter(7, r.getId()).executeUpdate();
+
         if (rows == 0) {
+            // 【修复】增加了 student_answers 字段
             String insert = "INSERT INTO exam_result (id, student_id, paper_id, score, exam_time, update_time, student_answers) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)";
-            oracleEm.createNativeQuery(insert).setParameter(1, r.getId()).setParameter(2, sid).setParameter(3, pid).setParameter(4, r.getScore()).setParameter(5, r.getCreateTime()).setParameter(6, r.getUpdateTime()).setParameter(7, r.getStudentAnswers()).executeUpdate();
+            oracleEm.createNativeQuery(insert)
+                    .setParameter(1, r.getId()).setParameter(2, sid).setParameter(3, pid)
+                    .setParameter(4, r.getScore()).setParameter(5, r.getCreateTime())
+                    .setParameter(6, r.getUpdateTime())
+                    .setParameter(7, r.getStudentAnswers()) // 设置答题JSON
+                    .executeUpdate();
         }
     }
 
@@ -532,29 +545,38 @@ public class SyncService {
         org.hibernate.Session session = sqlServerEm.unwrap(org.hibernate.Session.class);
         session.doWork(connection -> {
             try {
+                // 【修复】增加了 student_answers=?
                 String update = "UPDATE dbo.exam_result SET student_id=?, paper_id=?, score=?, exam_time=?, update_time=?, student_answers=? WHERE id=?";
                 try (java.sql.PreparedStatement ps = connection.prepareStatement(update)) {
-                    ps.setObject(1, r.getStudent() != null ? r.getStudent().getId() : null, java.sql.Types.BIGINT); ps.setObject(2, r.getPaper() != null ? r.getPaper().getId() : null, java.sql.Types.BIGINT);
+                    ps.setObject(1, r.getStudent() != null ? r.getStudent().getId() : null, java.sql.Types.BIGINT);
+                    ps.setObject(2, r.getPaper() != null ? r.getPaper().getId() : null, java.sql.Types.BIGINT);
                     ps.setBigDecimal(3, r.getScore());
                     ps.setTimestamp(4, r.getCreateTime() != null ? Timestamp.valueOf(r.getCreateTime()) : null);
                     ps.setTimestamp(5, r.getUpdateTime() != null ? Timestamp.valueOf(r.getUpdateTime()) : null);
-                    ps.setString(6, r.getStudentAnswers()); ps.setLong(7, r.getId());
+                    ps.setString(6, r.getStudentAnswers()); // 设置答题JSON
+                    ps.setLong(7, r.getId());
                     if (ps.executeUpdate() > 0) return;
                 }
+
                 try (java.sql.Statement stmt = connection.createStatement()) {
                     stmt.execute("SET IDENTITY_INSERT dbo.exam_result ON");
+                    // 【修复】增加了 student_answers
                     String insert = "INSERT INTO dbo.exam_result (id, student_id, paper_id, score, exam_time, update_time, student_answers) VALUES (?, ?, ?, ?, ?, ?, ?)";
                     try (java.sql.PreparedStatement ps = connection.prepareStatement(insert)) {
-                        ps.setLong(1, r.getId()); ps.setObject(2, r.getStudent() != null ? r.getStudent().getId() : null, java.sql.Types.BIGINT); ps.setObject(3, r.getPaper() != null ? r.getPaper().getId() : null, java.sql.Types.BIGINT);
+                        ps.setLong(1, r.getId());
+                        ps.setObject(2, r.getStudent() != null ? r.getStudent().getId() : null, java.sql.Types.BIGINT);
+                        ps.setObject(3, r.getPaper() != null ? r.getPaper().getId() : null, java.sql.Types.BIGINT);
                         ps.setBigDecimal(4, r.getScore());
                         ps.setTimestamp(5, r.getCreateTime() != null ? Timestamp.valueOf(r.getCreateTime()) : null);
                         ps.setTimestamp(6, r.getUpdateTime() != null ? Timestamp.valueOf(r.getUpdateTime()) : null);
-                        ps.setString(7, r.getStudentAnswers());
+                        ps.setString(7, r.getStudentAnswers()); // 设置答题JSON
                         ps.executeUpdate();
                     }
                     stmt.execute("SET IDENTITY_INSERT dbo.exam_result OFF");
                 }
-            } catch (Exception e) { throw new RuntimeException(e.getMessage()); }
+            } catch (Exception e) {
+                throw new RuntimeException("SQL Server ExamResult同步失败: " + e.getMessage());
+            }
         });
     }
 
@@ -597,11 +619,24 @@ public class SyncService {
     public void syncToMysqlResult(ExamResult r) {
         Long sid = r.getStudent() != null ? r.getStudent().getId() : null;
         Long pid = r.getPaper() != null ? r.getPaper().getId() : null;
+
+        // 【修复】增加了 student_answers=?6
         String update = "UPDATE exam_result SET student_id=?1, paper_id=?2, score=?3, exam_time=?4, update_time=?5, student_answers=?6 WHERE id=?7";
-        int rows = mysqlEm.createNativeQuery(update).setParameter(1, sid).setParameter(2, pid).setParameter(3, r.getScore()).setParameter(4, r.getCreateTime()).setParameter(5, r.getUpdateTime()).setParameter(6, r.getStudentAnswers()).setParameter(7, r.getId()).executeUpdate();
+        int rows = mysqlEm.createNativeQuery(update)
+                .setParameter(1, sid).setParameter(2, pid).setParameter(3, r.getScore())
+                .setParameter(4, r.getCreateTime()).setParameter(5, r.getUpdateTime())
+                .setParameter(6, r.getStudentAnswers()) // 设置答题JSON
+                .setParameter(7, r.getId()).executeUpdate();
+
         if (rows == 0) {
+            // 【修复】增加了 student_answers 字段
             String insert = "INSERT INTO exam_result (id, student_id, paper_id, score, exam_time, update_time, student_answers) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)";
-            mysqlEm.createNativeQuery(insert).setParameter(1, r.getId()).setParameter(2, sid).setParameter(3, pid).setParameter(4, r.getScore()).setParameter(5, r.getCreateTime()).setParameter(6, r.getUpdateTime()).setParameter(7, r.getStudentAnswers()).executeUpdate();
+            mysqlEm.createNativeQuery(insert)
+                    .setParameter(1, r.getId()).setParameter(2, sid).setParameter(3, pid)
+                    .setParameter(4, r.getScore()).setParameter(5, r.getCreateTime())
+                    .setParameter(6, r.getUpdateTime())
+                    .setParameter(7, r.getStudentAnswers()) // 设置答题JSON
+                    .executeUpdate();
         }
     }
 
